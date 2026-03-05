@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Web Vox",
+  "version": "0.1.0",
+  "description": "OS-level TTS with audio capture for web pages",
+  "permissions": ["nativeMessaging", "ttsEngine"],
+  "background": {
+    "service_worker": "dist/background/service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["dist/content/bridge.js"],
+      "world": "MAIN",
+      "run_at": "document_start"
+    }
+  ],
+  "tts_engine": {
+    "voices": [
+      { "voice_name": "Web Vox Default", "lang": "en-US", "event_types": ["start", "word", "end"] }
+    ]
+  }
+}

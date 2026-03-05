@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Web Vox</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: #0a0a0f;
+    color: #e0e0e0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 3rem 1rem;
+  }
+
+  h1 {
+    font-size: 1.8rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin-bottom: 0.25rem;
+    color: #fff;
+  }
+
+  .subtitle {
+    color: #666;
+    font-size: 0.85rem;
+    margin-bottom: 2rem;
+  }
+
+  .card {
+    background: #141419;
+    border: 1px solid #222;
+    border-radius: 12px;
+    padding: 1.5rem;
+    width: 100%;
+    max-width: 560px;
+  }
+
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    font-size: 0.8rem;
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #444;
+    transition: background 0.3s;
+  }
+  .status-dot.connected { background: #34d399; }
+  .status-dot.error { background: #f87171; }
+
+  label {
+    display: block;
+    font-size: 0.75rem;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.4rem;
+  }
+
+  textarea {
+    width: 100%;
+    min-height: 100px;
+    background: #0d0d12;
+    border: 1px solid #2a2a35;
+    border-radius: 8px;
+    padding: 0.75rem;
+    color: #e0e0e0;
+    font-family: inherit;
+    font-size: 0.95rem;
+    line-height: 1.5;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  textarea:focus { border-color: #4f6ef7; }
+
+  select {
+    width: 100%;
+    background: #0d0d12;
+    border: 1px solid #2a2a35;
+    border-radius: 8px;
+    padding: 0.6rem 0.75rem;
+    color: #e0e0e0;
+    font-family: inherit;
+    font-size: 0.9rem;
+    outline: none;
+    appearance: none;
+    cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%23666'%3E%3Cpath d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+  }
+  select:focus { border-color: #4f6ef7; }
+
+  .controls {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 1rem;
+  }
+
+  .field { margin-bottom: 1rem; }
+
+  .row { display: flex; gap: 0.75rem; }
+  .row > .field { flex: 1; }
+
+  input[type="range"] {
+    width: 100%;
+    accent-color: #4f6ef7;
+  }
+
+  .range-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .range-label span { font-size: 0.8rem; color: #aaa; }
+
+  button {
+    flex: 1;
+    padding: 0.65rem 1rem;
+    border: none;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .btn-primary {
+    background: #4f6ef7;
+    color: #fff;
+  }
+  .btn-primary:hover { background: #3d5ce5; }
+  .btn-primary:disabled { background: #333; color: #666; cursor: not-allowed; }
+
+  .btn-secondary {
+    background: #1e1e28;
+    color: #ccc;
+    border: 1px solid #333;
+  }
+  .btn-secondary:hover { background: #28283a; }
+  .btn-secondary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .output {
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid #222;
+    display: none;
+  }
+  .output.visible { display: block; }
+
+  .audio-info {
+    font-size: 0.8rem;
+    color: #888;
+    margin-bottom: 0.75rem;
+  }
+
+  audio {
+    width: 100%;
+    margin-bottom: 0.75rem;
+    border-radius: 8px;
+  }
+
+  .waveform {
+    width: 100%;
+    height: 80px;
+    background: #0d0d12;
+    border-radius: 8px;
+    margin-bottom: 0.75rem;
+  }
+
+  .log {
+    margin-top: 1.5rem;
+    max-width: 560px;
+    width: 100%;
+  }
+  .log summary {
+    font-size: 0.75rem;
+    color: #555;
+    cursor: pointer;
+    user-select: none;
+  }
+  .log pre {
+    margin-top: 0.5rem;
+    font-size: 0.7rem;
+    color: #555;
+    background: #0d0d12;
+    border-radius: 8px;
+    padding: 0.75rem;
+    max-height: 200px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+</style>
+</head>
+<body>
+
+<h1>Web Vox</h1>
+<p class="subtitle">OS-level TTS with audio capture</p>
+
+<div class="card">
+  <div class="status-bar">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">Connecting...</span>
+  </div>
+
+  <div class="field">
+    <label for="textInput">Text</label>
+    <textarea id="textInput" placeholder="Type something to synthesize...">Hello! This is Web Vox, capturing audio directly from your operating system's text-to-speech engine.</textarea>
+  </div>
+
+  <div class="field">
+    <label for="voiceSelect">Voice</label>
+    <select id="voiceSelect" disabled>
+      <option>Loading voices...</option>
+    </select>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <div class="range-label">
+        <label for="rateSlider">Speed</label>
+        <span id="rateValue">1.0x</span>
+      </div>
+      <input type="range" id="rateSlider" min="0.25" max="3" step="0.25" value="1">
+    </div>
+    <div class="field">
+      <div class="range-label">
+        <label for="pitchSlider">Pitch</label>
+        <span id="pitchValue">1.0</span>
+      </div>
+      <input type="range" id="pitchSlider" min="0.5" max="2" step="0.1" value="1">
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="btn-primary" id="synthBtn" disabled>Synthesize</button>
+    <button class="btn-secondary" id="downloadBtn" disabled>Download WAV</button>
+  </div>
+
+  <div class="output" id="output">
+    <canvas class="waveform" id="waveform"></canvas>
+    <audio controls id="audioPlayer"></audio>
+    <div class="audio-info" id="audioInfo"></div>
+  </div>
+</div>
+
+<details class="log">
+  <summary>Console</summary>
+  <pre id="logPre"></pre>
+</details>
+
+<script>
+const WS_URL = 'ws://localhost:21740';
+
+// State
+let ws = null;
+let voices = [];
+let lastAudioBuffer = null;  // Float32Array
+let lastSampleRate = 22050;
+let lastWavBlob = null;
+
+// DOM
+const statusDot = document.getElementById('statusDot');
+const statusText = document.getElementById('statusText');
+const textInput = document.getElementById('textInput');
+const voiceSelect = document.getElementById('voiceSelect');
+const rateSlider = document.getElementById('rateSlider');
+const rateValue = document.getElementById('rateValue');
+const pitchSlider = document.getElementById('pitchSlider');
+const pitchValue = document.getElementById('pitchValue');
+const synthBtn = document.getElementById('synthBtn');
+const downloadBtn = document.getElementById('downloadBtn');
+const output = document.getElementById('output');
+const waveformCanvas = document.getElementById('waveform');
+const audioPlayer = document.getElementById('audioPlayer');
+const audioInfo = document.getElementById('audioInfo');
+const logPre = document.getElementById('logPre');
+
+// Slider labels
+rateSlider.oninput = () => rateValue.textContent = rateSlider.value + 'x';
+pitchSlider.oninput = () => pitchValue.textContent = parseFloat(pitchSlider.value).toFixed(1);
+
+// Logging
+function log(msg) {
+  const ts = new Date().toLocaleTimeString();
+  logPre.textContent += `[${ts}] ${msg}\n`;
+  logPre.scrollTop = logPre.scrollHeight;
+}
+
+// WebSocket
+function connect() {
+  ws = new WebSocket(WS_URL);
+
+  ws.onopen = () => {
+    statusDot.className = 'status-dot connected';
+    statusText.textContent = 'Connected to web-vox server';
+    synthBtn.disabled = false;
+    log('Connected to ' + WS_URL);
+    // Request voice list
+    ws.send(JSON.stringify({ type: 'list_voices' }));
+  };
+
+  ws.onclose = () => {
+    statusDot.className = 'status-dot error';
+    statusText.textContent = 'Disconnected — is web-vox-server running?';
+    synthBtn.disabled = true;
+    log('Disconnected');
+    // Retry in 3s
+    setTimeout(connect, 3000);
+  };
+
+  ws.onerror = () => {
+    statusDot.className = 'status-dot error';
+    statusText.textContent = 'Cannot connect — start: cargo run --bin web-vox-server';
+  };
+
+  ws.onmessage = (event) => {
+    const msg = JSON.parse(event.data);
+    handleMessage(msg);
+  };
+}
+
+// Pending synthesis state
+let pendingSynth = null; // { id, chunks: [], boundaries: [] }
+
+function handleMessage(msg) {
+  switch (msg.type) {
+    case 'voice_list':
+      voices = msg.voices;
+      populateVoices(voices);
+      log(`Loaded ${voices.length} voices`);
+      break;
+
+    case 'audio_chunk':
+      if (pendingSynth && msg.id === pendingSynth.id) {
+        pendingSynth.chunks.push(msg);
+      }
+      break;
+
+    case 'word_boundary':
+      if (pendingSynth && msg.id === pendingSynth.id) {
+        pendingSynth.boundaries.push(msg);
+      }
+      break;
+
+    case 'synthesis_complete':
+      if (pendingSynth && msg.id === pendingSynth.id) {
+        finalizeSynthesis(pendingSynth, msg.total_duration_ms);
+        pendingSynth = null;
+        synthBtn.disabled = false;
+        synthBtn.textContent = 'Synthesize';
+      }
+      break;
+
+    case 'error':
+      log(`ERROR: ${msg.message}`);
+      if (pendingSynth) {
+        pendingSynth = null;
+        synthBtn.disabled = false;
+        synthBtn.textContent = 'Synthesize';
+      }
+      break;
+  }
+}
+
+function populateVoices(voiceList) {
+  voiceSelect.innerHTML = '';
+  // Group by language
+  const byLang = {};
+  for (const v of voiceList) {
+    const lang = v.language;
+    if (!byLang[lang]) byLang[lang] = [];
+    byLang[lang].push(v);
+  }
+  // Sort English first
+  const langs = Object.keys(byLang).sort((a, b) => {
+    if (a.startsWith('en') && !b.startsWith('en')) return -1;
+    if (!a.startsWith('en') && b.startsWith('en')) return 1;
+    return a.localeCompare(b);
+  });
+  for (const lang of langs) {
+    const group = document.createElement('optgroup');
+    group.label = lang;
+    for (const v of byLang[lang]) {
+      const opt = document.createElement('option');
+      opt.value = v.id;
+      opt.textContent = v.name + (v.gender ? ` (${v.gender})` : '');
+      group.appendChild(opt);
+    }
+    voiceSelect.appendChild(group);
+  }
+  voiceSelect.disabled = false;
+}
+
+// Synthesize
+synthBtn.onclick = () => {
+  const text = textInput.value.trim();
+  if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
+
+  const id = crypto.randomUUID();
+  pendingSynth = { id, chunks: [], boundaries: [] };
+  synthBtn.disabled = true;
+  synthBtn.textContent = 'Synthesizing...';
+
+  ws.send(JSON.stringify({
+    type: 'synthesize',
+    id,
+    text,
+    voice_id: voiceSelect.value || undefined,
+    rate: parseFloat(rateSlider.value),
+    pitch: parseFloat(pitchSlider.value),
+    volume: 1.0,
+  }));
+
+  log(`Synthesizing "${text.slice(0, 50)}${text.length > 50 ? '...' : ''}" with ${voiceSelect.selectedOptions[0]?.textContent || 'default'}`);
+};
+
+// Decode base64 PCM Float32LE
+function decodeBase64Pcm(b64) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Float32Array(bytes.buffer);
+}
+
+function finalizeSynthesis(synth, totalDurationMs) {
+  // Sort and decode chunks
+  const sorted = synth.chunks.sort((a, b) => a.sequence - b.sequence);
+  const sampleRate = sorted[0]?.sample_rate || 22050;
+  const channels = sorted[0]?.channels || 1;
+
+  const arrays = sorted.map(c => decodeBase64Pcm(c.data_base64));
+  const totalLen = arrays.reduce((s, a) => s + a.length, 0);
+  const samples = new Float32Array(totalLen);
+  let offset = 0;
+  for (const arr of arrays) {
+    samples.set(arr, offset);
+    offset += arr.length;
+  }
+
+  lastAudioBuffer = samples;
+  lastSampleRate = sampleRate;
+
+  const durationSec = totalLen / sampleRate;
+  log(`Got ${totalLen} samples, ${durationSec.toFixed(2)}s @ ${sampleRate}Hz, ${synth.chunks.length} chunks`);
+
+  // Create WAV blob
+  lastWavBlob = createWavBlob(samples, sampleRate, channels);
+
+  // Play it
+  const url = URL.createObjectURL(lastWavBlob);
+  audioPlayer.src = url;
+  audioPlayer.play();
+
+  // Show info
+  const sizeMB = (lastWavBlob.size / 1024 / 1024).toFixed(2);
+  audioInfo.textContent = `${durationSec.toFixed(2)}s | ${sampleRate} Hz | ${channels}ch | ${sizeMB} MB WAV`;
+
+  // Draw waveform
+  drawWaveform(samples);
+
+  // Show output section
+  output.classList.add('visible');
+  downloadBtn.disabled = false;
+}
+
+// WAV encoder
+function createWavBlob(samples, sampleRate, channels) {
+  // Convert float32 to int16
+  const int16 = new Int16Array(samples.length);
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+  }
+
+  const byteRate = sampleRate * channels * 2;
+  const blockAlign = channels * 2;
+  const dataSize = int16.length * 2;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  // RIFF header
+  writeString(view, 0, 'RIFF');
+  view.setUint32(4, 36 + dataSize, true);
+  writeString(view, 8, 'WAVE');
+
+  // fmt chunk
+  writeString(view, 12, 'fmt ');
+  view.setUint32(16, 16, true);        // chunk size
+  view.setUint16(20, 1, true);         // PCM
+  view.setUint16(22, channels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true);        // bits per sample
+
+  // data chunk
+  writeString(view, 36, 'data');
+  view.setUint32(40, dataSize, true);
+
+  const output = new Int16Array(buffer, 44);
+  output.set(int16);
+
+  return new Blob([buffer], { type: 'audio/wav' });
+}
+
+function writeString(view, offset, str) {
+  for (let i = 0; i < str.length; i++) {
+    view.setUint8(offset + i, str.charCodeAt(i));
+  }
+}
+
+// Waveform visualization
+function drawWaveform(samples) {
+  const canvas = waveformCanvas;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  ctx.scale(dpr, dpr);
+
+  ctx.fillStyle = '#0d0d12';
+  ctx.fillRect(0, 0, w, h);
+
+  const mid = h / 2;
+  const step = Math.max(1, Math.floor(samples.length / w));
+
+  ctx.beginPath();
+  ctx.strokeStyle = '#4f6ef7';
+  ctx.lineWidth = 1;
+
+  for (let x = 0; x < w; x++) {
+    const idx = Math.floor(x * samples.length / w);
+    // Find min/max in this bucket
+    let min = 1, max = -1;
+    for (let j = 0; j < step && idx + j < samples.length; j++) {
+      const s = samples[idx + j];
+      if (s < min) min = s;
+      if (s > max) max = s;
+    }
+    const y1 = mid + min * mid * 0.9;
+    const y2 = mid + max * mid * 0.9;
+    ctx.moveTo(x, y1);
+    ctx.lineTo(x, y2);
+  }
+  ctx.stroke();
+}
+
+// Download
+downloadBtn.onclick = () => {
+  if (!lastWavBlob) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(lastWavBlob);
+  a.download = 'web-vox-output.wav';
+  a.click();
+};
+
+// Init
+connect();
+</script>
+</body>
+</html>

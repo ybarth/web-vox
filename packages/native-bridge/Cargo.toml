@@ -1,0 +1,35 @@
+[package]
+name = "web-vox-native-bridge"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+web-vox-protocol = { path = "../../crates/web-vox-protocol" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+base64 = "0.22"
+uuid = { version = "1", features = ["v4"] }
+log = "0.4"
+env_logger = "0.11"
+thiserror = "2"
+tokio-tungstenite = "0.26"
+futures-util = "0.3"
+http = "1"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSString", "NSRange", "NSError", "NSThread", "NSArray", "NSEnumerator"] }
+objc2-avf-audio = { version = "0.3", features = ["AVSpeechSynthesis", "AVAudioBuffer", "block2"] }
+block2 = "0.6"
+
+[[example]]
+name = "test_synth"
+
+[[bin]]
+name = "web-vox-messaging-host"
+path = "src/bin/messaging_host.rs"
+
+[[bin]]
+name = "web-vox-server"
+path = "src/bin/ws_server.rs"

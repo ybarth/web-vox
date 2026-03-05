@@ -1,0 +1,10 @@
+node_modules/
+dist/
+target/
+*.log
+.turbo/
+.env
+.env.local
+*.swp
+*.swo
+.DS_Store
