@@ -67,6 +67,8 @@ export interface EngineCapabilities {
   maxTextLength?: number;
   supportedLanguages?: string[];
   isLocal: boolean;
+  maxRate: number;
+  minRate: number;
 }
 
 export interface SynthesisOptions {

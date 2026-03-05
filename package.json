@@ -13,6 +13,7 @@
     "build:rust": "cargo build --release",
     "test:rust": "cargo test"
   },
+  "packageManager": "npm@11.9.0",
   "devDependencies": {
     "turbo": "^2.0.0",
     "typescript": "^5.7.0"

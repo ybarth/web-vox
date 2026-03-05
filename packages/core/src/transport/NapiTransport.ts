@@ -15,7 +15,8 @@ export class NapiTransport implements TransportAdapter {
 
   async connect(): Promise<void> {
     try {
-      this.nativeModule = require!('web-vox-native-bridge');
+      const moduleName = 'web-vox-native-bridge';
+      this.nativeModule = require!(moduleName);
     } catch {
       throw new Error(
         'web-vox-native-bridge N-API module not found. Install it with: npm install web-vox-native-bridge'

@@ -51,13 +51,23 @@ export class WebSocketTransport implements TransportAdapter {
       this.ws.onmessage = (event) => {
         try {
           const msg: NativeResponse = JSON.parse(event.data as string);
-          if (msg.id && this.pendingRequests.has(msg.id as string)) {
-            const pending = this.pendingRequests.get(msg.id as string)!;
+          const msgId = msg.id as string | undefined;
+
+          if (msgId && this.pendingRequests.has(msgId)) {
+            const pending = this.pendingRequests.get(msgId)!;
             if (msg.type === 'synthesis_complete' || msg.type === 'voice_list' || msg.type === 'error') {
-              this.pendingRequests.delete(msg.id as string);
+              this.pendingRequests.delete(msgId);
               pending.resolve(msg);
             }
+          } else if (!msgId && (msg.type === 'voice_list' || msg.type === 'error')) {
+            // Responses without id (e.g. voice_list) — resolve the oldest pending request
+            for (const [id, pending] of this.pendingRequests) {
+              this.pendingRequests.delete(id);
+              pending.resolve(msg);
+              break;
+            }
           }
+
           this.messageHandlers.forEach(h => h(msg));
         } catch {
           // Ignore non-JSON messages

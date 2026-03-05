@@ -20,6 +20,8 @@ export class WebSpeechEngine implements EngineAdapter {
     supportsPhonemeBoundaries: false,
     supportsStreaming: false,
     isLocal: true,
+    maxRate: 10.0,
+    minRate: 0.1,
   };
 
   private synth: SpeechSynthesis;

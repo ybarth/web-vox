@@ -23,6 +23,8 @@ export class NativeBridgeEngine implements EngineAdapter {
     supportsPhonemeBoundaries: false,
     supportsStreaming: true,
     isLocal: true,
+    maxRate: 6.0,
+    minRate: 0.1,
   };
 
   private transport: TransportAdapter | null = null;

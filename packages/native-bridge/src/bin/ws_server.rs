@@ -212,27 +212,59 @@ fn handle_list_voices() -> Vec<String> {
 fn handle_synthesize(req: &SynthesizeRequest) -> Vec<String> {
     let id = req.id.clone();
     let mut responses = Vec::new();
+    println!("  Request: rate={}, pitch={}, voice={:?}", req.rate, req.pitch, req.voice_id);
 
     #[cfg(target_os = "macos")]
     {
         let synth = MacOsSynthesizer::new();
+        // Synthesize at normal speed — sonic handles the time-stretching
         let options = SynthesisOptions {
             voice_id: req.voice_id.clone(),
-            rate: req.rate,
+            rate: 1.0,
             pitch: req.pitch,
             volume: req.volume,
         };
 
         match synth.synthesize(&req.text, &id, &options) {
             Ok(output) => {
+                // Apply sonic time-stretching if speed != 1.0
+                let speed = req.rate;
+                let (final_samples, final_duration_ms) = if (speed - 1.0).abs() > 0.01 {
+                    println!(
+                        "  Applying sonic time-stretch: {:.1}x speed",
+                        speed
+                    );
+                    let stretched = web_vox_native_bridge::audio::sonic::time_stretch(
+                        &output.samples,
+                        output.sample_rate,
+                        output.channels,
+                        speed,
+                    );
+                    let duration_ms = if output.sample_rate > 0 && output.channels > 0 {
+                        let frames = stretched.len() as f64 / output.channels as f64;
+                        (frames / output.sample_rate as f64) * 1000.0
+                    } else {
+                        0.0
+                    };
+                    (stretched, duration_ms)
+                } else {
+                    (output.samples.clone(), output.total_duration_ms)
+                };
+
+                // Scale word boundary timings by 1/speed
                 for wb in &output.word_boundaries {
-                    let msg = HostMessage::WordBoundary(wb.clone());
+                    let mut scaled_wb = wb.clone();
+                    if (speed - 1.0).abs() > 0.01 {
+                        scaled_wb.start_time_ms /= speed as f64;
+                        scaled_wb.end_time_ms /= speed as f64;
+                    }
+                    let msg = HostMessage::WordBoundary(scaled_wb);
                     responses.push(serde_json::to_string(&msg).unwrap());
                 }
 
                 let chunks = web_vox_native_bridge::audio::encoder::encode_chunks(
                     &id,
-                    &output.samples,
+                    &final_samples,
                     output.sample_rate,
                     output.channels,
                 );
@@ -243,15 +275,16 @@ fn handle_synthesize(req: &SynthesizeRequest) -> Vec<String> {
 
                 let msg = HostMessage::SynthesisComplete(SynthesisComplete {
                     id: id.clone(),
-                    total_duration_ms: output.total_duration_ms,
+                    total_duration_ms: final_duration_ms,
                 });
                 responses.push(serde_json::to_string(&msg).unwrap());
 
                 println!(
-                    "  Synthesized \"{}\" -> {:.1}s, {} samples",
+                    "  Synthesized \"{}\" -> {:.1}s ({:.1}x via sonic), {} samples",
                     truncate(&req.text, 40),
-                    output.total_duration_ms / 1000.0,
-                    output.samples.len()
+                    final_duration_ms / 1000.0,
+                    speed,
+                    final_samples.len()
                 );
             }
             Err(e) => {

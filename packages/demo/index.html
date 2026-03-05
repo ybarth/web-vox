@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WebVox</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>WebVox</h1>
+      <p class="subtitle">OS-level text-to-speech with audio capture</p>
+    </header>
+
+    <main>
+      <section class="card">
+        <label for="voice-select">Voice</label>
+        <select id="voice-select" disabled>
+          <option value="">Loading voices...</option>
+        </select>
+      </section>
+
+      <section class="card">
+        <label for="text-input">Text</label>
+        <textarea id="text-input" rows="6" placeholder="Type or paste text here..."></textarea>
+      </section>
+
+      <section class="card controls-row">
+        <div class="slider-group">
+          <div class="slider-label-row">
+            <label for="rate-slider">Speed <span id="rate-value">1.0</span>x</label>
+            <div class="rate-buttons">
+              <button type="button" id="rate-reset-btn" class="rate-btn" title="Reset to 1x">1x</button>
+              <button type="button" id="rate-max-btn" class="rate-btn rate-btn-max" title="Maximum speed">Max</button>
+            </div>
+          </div>
+          <input type="range" id="rate-slider" min="0.1" max="10" step="0.1" value="1.0" />
+          <div class="slider-bounds">
+            <span id="rate-min">0.1x</span>
+            <span id="rate-max">10x</span>
+          </div>
+        </div>
+        <div class="slider-group">
+          <label for="pitch-slider">Pitch <span id="pitch-value">1.0</span></label>
+          <input type="range" id="pitch-slider" min="0" max="2" step="0.1" value="1.0" />
+          <div class="slider-bounds">
+            <span>0</span>
+            <span>2</span>
+          </div>
+        </div>
+        <div class="format-group">
+          <label for="format-select">Format</label>
+          <select id="format-select">
+            <option value="wav">WAV</option>
+            <option value="mp3">MP3</option>
+            <option value="m4a">M4A</option>
+          </select>
+        </div>
+      </section>
+
+      <section class="card actions">
+        <button id="generate-btn" disabled>Generate</button>
+        <button id="download-btn" disabled>Download</button>
+      </section>
+
+      <section class="card progress-section" id="progress-section" hidden>
+        <div class="progress-bar">
+          <div class="progress-fill" id="progress-fill"></div>
+        </div>
+        <span class="progress-text" id="progress-text">0%</span>
+      </section>
+
+      <section class="card" id="player-section" hidden>
+        <label>Preview</label>
+        <audio id="audio-player" controls></audio>
+      </section>
+
+      <section class="card" id="highlight-section" hidden>
+        <label>Text <span class="highlight-hint">(highlighting synced to playback)</span></label>
+        <div id="text-display" class="text-display"></div>
+      </section>
+
+      <section class="card log-section">
+        <label>Log</label>
+        <div id="log-panel"></div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

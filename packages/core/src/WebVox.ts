@@ -103,6 +103,24 @@ export class WebVox {
     return allVoices;
   }
 
+  // -- Rate Limits --
+
+  getMaxRate(engineId?: string): number {
+    const id = engineId ?? this.defaultEngineId;
+    if (!id) throw new Error('No engine registered');
+    const engine = this.engines.get(id);
+    if (!engine) throw new Error(`Engine "${id}" not found`);
+    return engine.capabilities.maxRate;
+  }
+
+  getMinRate(engineId?: string): number {
+    const id = engineId ?? this.defaultEngineId;
+    if (!id) throw new Error('No engine registered');
+    const engine = this.engines.get(id);
+    if (!engine) throw new Error(`Engine "${id}" not found`);
+    return engine.capabilities.minRate;
+  }
+
   // -- Extended API --
 
   async synthesize(text: string, options?: SynthesisOptions): Promise<SynthesisResult> {
@@ -112,9 +130,15 @@ export class WebVox {
     const engine = this.engines.get(engineId);
     if (!engine) throw new Error(`Engine "${engineId}" not found`);
 
+    // Clamp rate to engine limits
+    const processedOptions: SynthesisOptions = { ...(options ?? {}) };
+    if (processedOptions.rate !== undefined) {
+      const { minRate, maxRate } = engine.capabilities;
+      processedOptions.rate = Math.min(Math.max(processedOptions.rate, minRate), maxRate);
+    }
+
     // Pre-process with semantic analysis
     let prosodyHints = undefined;
-    const processedOptions = options ?? {};
     if (this.semanticAnalyzer) {
       const analysis = await this.semanticAnalyzer.analyze(text);
       prosodyHints = analysis.prosodyHints;
