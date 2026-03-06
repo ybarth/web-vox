@@ -84,6 +84,9 @@ define_class!(
                 char_length: character_range.length,
                 start_time_ms,
                 end_time_ms: start_time_ms, // fixed up after synthesis
+                confidence: None,
+                phonemes: None,
+                syllables: None,
             });
         }
     }
@@ -299,12 +302,24 @@ fn list_avspeech_voices() -> Result<Vec<VoiceDescriptor>, TtsError> {
                 _ => None,
             };
 
+            // Detect voice quality from identifier
+            let quality = if id.contains(".premium") || id.contains(".enhanced") {
+                Some("premium".to_string())
+            } else if id.contains(".compact") {
+                Some("compact".to_string())
+            } else {
+                Some("default".to_string())
+            };
+
             result.push(VoiceDescriptor {
                 id,
                 name,
                 language,
                 gender: gender_str,
                 engine: "macos-avspeech".to_string(),
+                quality,
+                description: Some("macOS built-in AVSpeechSynthesizer voice".to_string()),
+                sample_rate: Some(22050),
             });
         }
     }

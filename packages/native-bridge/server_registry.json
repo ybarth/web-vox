@@ -1,0 +1,15 @@
+{
+  "servers": {
+    "kokoro": { "mode": "local", "url": "http://127.0.0.1:21742" },
+    "chatterbox": { "mode": "local", "url": "http://127.0.0.1:21741" },
+    "coqui": { "mode": "local", "url": "http://127.0.0.1:21743" },
+    "qwen": { "mode": "local", "url": "http://127.0.0.1:21744" },
+    "coqui_xtts": { "mode": "local", "url": "http://127.0.0.1:21745" },
+    "qwen_clone": { "mode": "local", "url": "http://127.0.0.1:21746" },
+    "alignment": { "mode": "local", "url": "http://127.0.0.1:21747" },
+    "quality": { "mode": "local", "url": "http://127.0.0.1:21748" },
+    "voice_designer": { "mode": "local", "url": "http://127.0.0.1:21749" },
+    "document_analyzer": { "mode": "local", "url": "http://127.0.0.1:21750" },
+    "ocr": { "mode": "local", "url": "http://127.0.0.1:21751" }
+  }
+}

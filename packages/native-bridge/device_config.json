@@ -1,0 +1,28 @@
+{
+  "alignment": {
+    "device": "cpu",
+    "model_size": "small",
+    "notes": "Use 'large-v3-turbo' with 'cuda' or 'mps' for best accuracy"
+  },
+  "quality": {
+    "device": "cpu",
+    "models": {
+      "whisper": { "device": "cpu" },
+      "utmos": { "device": "cpu" },
+      "kimi_audio": { "device": "cpu" },
+      "crepe": { "device": "cpu" }
+    }
+  },
+  "voice_designer": {
+    "device": "cpu",
+    "notes": "GPU strongly recommended for Parler-TTS"
+  },
+  "document_analyzer": {
+    "device": "cpu",
+    "provider": "ollama",
+    "model": "llama3.1:8b"
+  },
+  "ocr": {
+    "device": "cpu"
+  }
+}
