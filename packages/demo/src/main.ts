@@ -8,6 +8,7 @@ import {
   type SystemInfo,
   type PiperCatalogVoice,
   type VoiceSampleInfo,
+  type ServerProcessStats,
 } from '@web-vox/core';
 
 // @ts-ignore — lamejs has no types
@@ -31,6 +32,7 @@ const rateResetBtn = document.getElementById('rate-reset-btn') as HTMLButtonElem
 const pitchSlider = document.getElementById('pitch-slider') as HTMLInputElement;
 const pitchValue = document.getElementById('pitch-value') as HTMLSpanElement;
 const formatSelect = document.getElementById('format-select') as HTMLSelectElement;
+const alignmentSelect = document.getElementById('alignment-select') as HTMLSelectElement;
 const generateBtn = document.getElementById('generate-btn') as HTMLButtonElement;
 const downloadBtn = document.getElementById('download-btn') as HTMLButtonElement;
 const progressSection = document.getElementById('progress-section') as HTMLElement;
@@ -75,6 +77,15 @@ const sampleUploadBtn = document.getElementById('sample-upload-btn') as HTMLButt
 const sampleList = document.getElementById('sample-list') as HTMLDivElement;
 const sampleStatus = document.getElementById('sample-status') as HTMLSpanElement;
 const sampleModalClose = document.getElementById('sample-modal-close') as HTMLButtonElement;
+const cloneEngineSelect = document.getElementById('clone-engine-select') as HTMLSelectElement;
+
+// Server dashboard
+const serverDashboardBtn = document.getElementById('server-dashboard-btn') as HTMLButtonElement;
+const serverDashboard = document.getElementById('server-dashboard') as HTMLDivElement;
+const serverDashboardBody = document.getElementById('server-dashboard-body') as HTMLDivElement;
+const serverDashboardStatus = document.getElementById('server-dashboard-status') as HTMLSpanElement;
+const serverDashboardRefresh = document.getElementById('server-dashboard-refresh') as HTMLButtonElement;
+const serverDashboardClose = document.getElementById('server-dashboard-close') as HTMLButtonElement;
 
 // Error dialog
 const errorDialog = document.getElementById('error-dialog') as HTMLDivElement;
@@ -372,6 +383,11 @@ function getEngineClass(engine: string): string {
   if (engine.includes('piper')) return 'engine-piper';
   if (engine.includes('espeak')) return 'engine-espeak';
   if (engine.includes('chatterbox')) return 'engine-chatterbox';
+  if (engine.includes('kokoro')) return 'engine-kokoro';
+  if (engine.includes('coqui-xtts')) return 'engine-coqui-xtts';
+  if (engine.includes('coqui')) return 'engine-coqui';
+  if (engine.includes('qwen-clone')) return 'engine-qwen-clone';
+  if (engine.includes('qwen')) return 'engine-qwen';
   return '';
 }
 
@@ -380,6 +396,11 @@ function getEngineLabel(engine: string): string {
   if (engine.includes('piper')) return 'Piper';
   if (engine.includes('espeak')) return 'eSpeak';
   if (engine.includes('chatterbox')) return 'Chatterbox';
+  if (engine.includes('kokoro')) return 'Kokoro';
+  if (engine.includes('coqui-xtts')) return 'XTTS Clone';
+  if (engine.includes('coqui')) return 'Coqui';
+  if (engine.includes('qwen-clone')) return 'Qwen Clone';
+  if (engine.includes('qwen')) return 'Qwen';
   return engine;
 }
 
@@ -708,6 +729,26 @@ function getVoiceInstallSuggestion(voiceId: string): string {
     return 'This eSpeak-NG voice is not available. Ensure espeak-ng is installed: ' +
       'brew install espeak-ng (macOS) or apt install espeak-ng (Linux).';
   }
+  if (voiceId.startsWith('kokoro:')) {
+    return 'Ensure the Kokoro server is running: ' +
+      'cd packages/native-bridge && python3 kokoro_server.py';
+  }
+  if (voiceId.startsWith('coqui-xtts:')) {
+    return 'Ensure the Coqui XTTS server is running: ' +
+      'cd packages/native-bridge && python3 coqui_xtts_server.py';
+  }
+  if (voiceId.startsWith('coqui:')) {
+    return 'Ensure the Coqui TTS server is running: ' +
+      'cd packages/native-bridge && python3 coqui_server.py';
+  }
+  if (voiceId.startsWith('qwen-clone:')) {
+    return 'Ensure the Qwen3-TTS Clone server is running: ' +
+      'cd packages/native-bridge && python3.12 qwen_tts_clone_server.py';
+  }
+  if (voiceId.startsWith('qwen:')) {
+    return 'Ensure the Qwen3-TTS server is running: ' +
+      'cd packages/native-bridge && python3.12 qwen_tts_server.py';
+  }
   // macOS voice
   if (systemInfo?.os === 'macos') {
     return 'This macOS voice may need to be downloaded. Go to System Settings > ' +
@@ -728,6 +769,26 @@ function getEngineInstallSuggestion(voiceId: string): string {
   if (voiceId.startsWith('espeak-ng:')) {
     return 'eSpeak-NG is not installed. Install it with: brew install espeak-ng (macOS) ' +
       'or apt install espeak-ng (Linux).';
+  }
+  if (voiceId.startsWith('kokoro:')) {
+    return 'The Kokoro TTS server is not running. Start it with: ' +
+      'cd packages/native-bridge && python3 kokoro_server.py';
+  }
+  if (voiceId.startsWith('coqui-xtts:')) {
+    return 'The Coqui XTTS server is not running. Start it with: ' +
+      'cd packages/native-bridge && python3 coqui_xtts_server.py';
+  }
+  if (voiceId.startsWith('coqui:')) {
+    return 'The Coqui TTS server is not running. Start it with: ' +
+      'cd packages/native-bridge && python3 coqui_server.py';
+  }
+  if (voiceId.startsWith('qwen-clone:')) {
+    return 'The Qwen3-TTS Clone server is not running. Start it with: ' +
+      'cd packages/native-bridge && python3.12 qwen_tts_clone_server.py';
+  }
+  if (voiceId.startsWith('qwen:')) {
+    return 'The Qwen3-TTS server is not running. Start it with: ' +
+      'cd packages/native-bridge && python3.12 qwen_tts_server.py';
   }
   return 'The TTS engine for this voice is not available on your system.';
 }
@@ -1019,11 +1080,13 @@ async function generate() {
 
   try {
     const t0 = performance.now();
+    const alignment = alignmentSelect.value as 'none' | 'word' | 'word+syllable' | 'word+phoneme' | 'full';
     const result: SynthesisResult = await vox.synthesize(text, {
       voice,
       rate,
       pitch,
       engine: 'native-bridge',
+      alignment,
     });
     const elapsed = Math.round(performance.now() - t0);
 
@@ -1260,6 +1323,23 @@ async function renderSampleList() {
       sizeSpan.className = 'sample-item-size';
       sizeSpan.textContent = formatBytes(sample.size_bytes);
 
+      const useBtn = document.createElement('button');
+      useBtn.className = 'sample-item-use';
+      useBtn.textContent = 'Use';
+      useBtn.title = 'Select this sample with the chosen cloning engine';
+      useBtn.addEventListener('click', () => {
+        const engine = cloneEngineSelect.value;
+        const voiceId = `${engine}:${sample.name}`;
+        const voice = voices.find(v => v.id === voiceId);
+        if (voice) {
+          selectVoice(voiceId);
+          closeSampleModal();
+          log(`Selected cloned voice: ${voice.name}`, 'success');
+        } else {
+          sampleStatus.textContent = `Voice "${voiceId}" not found. Is the ${engine} server running?`;
+        }
+      });
+
       const deleteBtn = document.createElement('button');
       deleteBtn.className = 'sample-item-delete';
       deleteBtn.textContent = 'Delete';
@@ -1267,6 +1347,7 @@ async function renderSampleList() {
 
       item.appendChild(nameSpan);
       item.appendChild(sizeSpan);
+      item.appendChild(useBtn);
       item.appendChild(deleteBtn);
       sampleList.appendChild(item);
     }
@@ -1472,9 +1553,329 @@ sampleFileInput.addEventListener('change', () => {
 });
 sampleUploadBtn.addEventListener('click', uploadSampleFile);
 
+// ── Server Dashboard ──────────────────────────────────────
+
+let dashboardRefreshTimer = 0;
+let lastServerStats: ServerProcessStats[] = [];
+const expandedLogs = new Set<string>();
+
+function formatUptime(secs: number): string {
+  if (secs === 0) return '—';
+  if (secs < 60) return `${secs}s`;
+  if (secs < 3600) return `${Math.floor(secs / 60)}m ${secs % 60}s`;
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  return `${h}h ${m}m`;
+}
+
+function drawSparkline(canvas: HTMLCanvasElement, data: number[], maxVal: number, color: string) {
+  const ctx = canvas.getContext('2d');
+  if (!ctx || data.length < 2) return;
+
+  const w = canvas.width;
+  const h = canvas.height;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  ctx.scale(dpr, dpr);
+  canvas.style.width = `${w}px`;
+  canvas.style.height = `${h}px`;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Fill area
+  ctx.beginPath();
+  const step = w / (data.length - 1);
+  ctx.moveTo(0, h);
+  for (let i = 0; i < data.length; i++) {
+    const y = h - (Math.min(data[i], maxVal) / maxVal) * h;
+    ctx.lineTo(i * step, y);
+  }
+  ctx.lineTo(w, h);
+  ctx.closePath();
+  ctx.fillStyle = color.replace(')', ', 0.15)').replace('rgb', 'rgba');
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  for (let i = 0; i < data.length; i++) {
+    const y = h - (Math.min(data[i], maxVal) / maxVal) * h;
+    if (i === 0) ctx.moveTo(i * step, y);
+    else ctx.lineTo(i * step, y);
+  }
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+}
+
+async function fetchServerStats(): Promise<ServerProcessStats[]> {
+  try {
+    const stats = await nativeEngine.getServerStats();
+    lastServerStats = stats;
+    return stats;
+  } catch {
+    return lastServerStats;
+  }
+}
+
+async function manageServer(engine: string, action: 'start' | 'stop' | 'restart') {
+  log(`${action} server: ${engine}...`, 'info');
+  try {
+    const result = await nativeEngine.manageServer(engine, action);
+    if (result.success) {
+      log(`Server ${engine} ${action} successful`, 'success');
+    } else {
+      log(`Server ${engine} ${action} failed: ${result.error}`, 'error');
+    }
+  } catch (err) {
+    log(`Server management error: ${err instanceof Error ? err.message : err}`, 'error');
+  }
+  // Refresh dashboard after action
+  await refreshServerDashboard();
+}
+
+function renderServerDashboard(stats: ServerProcessStats[]) {
+  serverDashboardBody.innerHTML = '';
+  let onlineCount = 0;
+
+  for (const srv of stats) {
+    if (srv.online) onlineCount++;
+
+    const card = document.createElement('div');
+    card.className = `server-card ${srv.online ? 'server-online' : 'server-offline'}`;
+
+    // Header row
+    const header = document.createElement('div');
+    header.className = 'server-card-header';
+
+    const dot = document.createElement('div');
+    dot.className = `server-status-dot ${srv.online ? 'online' : 'offline'}`;
+
+    const name = document.createElement('span');
+    name.className = 'server-card-name';
+    name.textContent = srv.name;
+
+    const typeBadge = document.createElement('span');
+    typeBadge.className = `server-card-type ${srv.engine === 'ws-server' ? 'server-type-ws' : 'server-type-python'}`;
+    typeBadge.textContent = srv.engine === 'ws-server' ? 'Rust' : 'Python';
+
+    const port = document.createElement('span');
+    port.className = 'server-card-port';
+    port.textContent = `:${srv.port}`;
+
+    header.appendChild(dot);
+    header.appendChild(name);
+    header.appendChild(typeBadge);
+    header.appendChild(port);
+    card.appendChild(header);
+
+    // Details grid
+    const details = document.createElement('div');
+    details.className = 'server-card-details';
+
+    const addDetail = (label: string, value: string) => {
+      const row = document.createElement('div');
+      row.className = 'server-detail';
+      row.innerHTML = `<span class="server-detail-label">${label}:</span><span class="server-detail-value">${value}</span>`;
+      details.appendChild(row);
+    };
+
+    addDetail('Status', srv.online ? 'Online' : 'Offline');
+    if (srv.pid) addDetail('PID', String(srv.pid));
+    if (srv.online) {
+      addDetail('CPU', `${srv.cpu_percent.toFixed(1)}%`);
+      addDetail('Memory', `${srv.memory_mb.toFixed(1)} MB`);
+      if (srv.uptime_secs > 0) addDetail('Uptime', formatUptime(srv.uptime_secs));
+      if (srv.managed) addDetail('Managed', 'Yes');
+    }
+
+    card.appendChild(details);
+
+    // Sparkline charts (CPU + Memory)
+    if (srv.cpu_history.length > 1 || srv.memory_history.length > 1) {
+      const charts = document.createElement('div');
+      charts.className = 'server-card-charts';
+
+      // CPU sparkline
+      const cpuChart = document.createElement('div');
+      cpuChart.className = 'server-sparkline-group';
+      const cpuLabel = document.createElement('span');
+      cpuLabel.className = 'sparkline-label';
+      cpuLabel.textContent = 'CPU';
+      const cpuCanvas = document.createElement('canvas');
+      cpuCanvas.className = 'sparkline-canvas';
+      cpuCanvas.width = 120;
+      cpuCanvas.height = 28;
+      cpuChart.appendChild(cpuLabel);
+      cpuChart.appendChild(cpuCanvas);
+
+      // Memory sparkline
+      const memChart = document.createElement('div');
+      memChart.className = 'server-sparkline-group';
+      const memLabel = document.createElement('span');
+      memLabel.className = 'sparkline-label';
+      memLabel.textContent = 'MEM';
+      const memCanvas = document.createElement('canvas');
+      memCanvas.className = 'sparkline-canvas';
+      memCanvas.width = 120;
+      memCanvas.height = 28;
+      memChart.appendChild(memLabel);
+      memChart.appendChild(memCanvas);
+
+      charts.appendChild(cpuChart);
+      charts.appendChild(memChart);
+      card.appendChild(charts);
+
+      // Draw after DOM insert
+      requestAnimationFrame(() => {
+        const maxCpu = Math.max(100, ...srv.cpu_history);
+        const maxMem = Math.max(100, ...srv.memory_history);
+        drawSparkline(cpuCanvas, srv.cpu_history, maxCpu, 'rgb(108, 99, 255)');
+        drawSparkline(memCanvas, srv.memory_history, maxMem, 'rgb(76, 175, 80)');
+      });
+    }
+
+    // Actions row
+    const actions = document.createElement('div');
+    actions.className = 'server-card-actions';
+
+    if (srv.engine !== 'ws-server') {
+      if (srv.online) {
+        const restartBtn = document.createElement('button');
+        restartBtn.className = 'server-action-btn server-btn-restart';
+        restartBtn.textContent = 'Restart';
+        restartBtn.addEventListener('click', () => {
+          restartBtn.disabled = true;
+          restartBtn.textContent = 'Restarting...';
+          manageServer(srv.engine, 'restart');
+        });
+
+        const stopBtn = document.createElement('button');
+        stopBtn.className = 'server-action-btn server-btn-stop';
+        stopBtn.textContent = 'Stop';
+        stopBtn.addEventListener('click', () => {
+          stopBtn.disabled = true;
+          stopBtn.textContent = 'Stopping...';
+          manageServer(srv.engine, 'stop');
+        });
+
+        actions.appendChild(restartBtn);
+        actions.appendChild(stopBtn);
+      } else {
+        const startBtn = document.createElement('button');
+        startBtn.className = 'server-action-btn server-btn-start';
+        startBtn.textContent = 'Start';
+        startBtn.addEventListener('click', () => {
+          startBtn.disabled = true;
+          startBtn.textContent = 'Starting...';
+          manageServer(srv.engine, 'start');
+        });
+        actions.appendChild(startBtn);
+      }
+    }
+
+    // Usage log toggle button
+    if (srv.usage_log && srv.usage_log.length > 0) {
+      const logToggle = document.createElement('button');
+      logToggle.className = 'server-log-toggle';
+      const isExpanded = expandedLogs.has(srv.engine);
+      logToggle.textContent = `Log (${srv.usage_log.length})`;
+      if (isExpanded) logToggle.classList.add('active');
+      logToggle.addEventListener('click', () => {
+        if (expandedLogs.has(srv.engine)) {
+          expandedLogs.delete(srv.engine);
+        } else {
+          expandedLogs.add(srv.engine);
+        }
+        // Re-render just the log visibility
+        const logEl = card.querySelector('.server-usage-log') as HTMLElement;
+        if (logEl) logEl.hidden = !expandedLogs.has(srv.engine);
+        logToggle.classList.toggle('active', expandedLogs.has(srv.engine));
+      });
+      actions.appendChild(logToggle);
+    }
+
+    card.appendChild(actions);
+
+    // Usage log table (collapsible)
+    if (srv.usage_log && srv.usage_log.length > 0) {
+      const logContainer = document.createElement('div');
+      logContainer.className = 'server-usage-log';
+      logContainer.hidden = !expandedLogs.has(srv.engine);
+
+      const table = document.createElement('table');
+      table.innerHTML = '<thead><tr><th>Time</th><th>Status</th><th>CPU %</th><th>Memory</th></tr></thead>';
+      const tbody = document.createElement('tbody');
+
+      // Show most recent entries first
+      const entries = [...srv.usage_log].reverse();
+      for (const entry of entries) {
+        const tr = document.createElement('tr');
+        if (!entry.online) tr.className = 'offline';
+
+        const timeStr = new Date(entry.timestamp * 1000).toLocaleTimeString('en-US', { hour12: false });
+        const cpuClass = entry.cpu_percent > 80 ? ' class="log-cpu-high"' : '';
+        const memClass = entry.memory_mb > 4000 ? ' class="log-mem-high"' : '';
+
+        tr.innerHTML = `<td>${timeStr}</td><td>${entry.online ? 'Online' : 'Offline'}</td><td${cpuClass}>${entry.cpu_percent.toFixed(1)}%</td><td${memClass}>${entry.memory_mb.toFixed(1)} MB</td>`;
+        tbody.appendChild(tr);
+      }
+
+      table.appendChild(tbody);
+      logContainer.appendChild(table);
+      card.appendChild(logContainer);
+    }
+
+    serverDashboardBody.appendChild(card);
+  }
+
+  // Summary bar
+  const totalCpu = stats.reduce((s, srv) => s + srv.cpu_percent, 0);
+  const totalMem = stats.reduce((s, srv) => s + srv.memory_mb, 0);
+  serverDashboardStatus.textContent = `${onlineCount}/${stats.length} online | CPU: ${totalCpu.toFixed(1)}% | RAM: ${totalMem.toFixed(0)} MB`;
+}
+
+async function openServerDashboard() {
+  serverDashboard.hidden = false;
+  serverDashboardBody.innerHTML = '<div class="server-dashboard-loading">Probing servers...</div>';
+  serverDashboardStatus.textContent = '';
+
+  const stats = await fetchServerStats();
+  renderServerDashboard(stats);
+
+  // Auto-refresh every 5 seconds
+  dashboardRefreshTimer = window.setInterval(async () => {
+    if (serverDashboard.hidden) return;
+    const s = await fetchServerStats();
+    renderServerDashboard(s);
+  }, 5000);
+}
+
+function closeServerDashboard() {
+  serverDashboard.hidden = true;
+  clearInterval(dashboardRefreshTimer);
+}
+
+async function refreshServerDashboard() {
+  serverDashboardRefresh.disabled = true;
+  serverDashboardRefresh.textContent = 'Refreshing...';
+  const stats = await fetchServerStats();
+  renderServerDashboard(stats);
+  serverDashboardRefresh.disabled = false;
+  serverDashboardRefresh.textContent = 'Refresh';
+}
+
+serverDashboardBtn.addEventListener('click', openServerDashboard);
+serverDashboardClose.addEventListener('click', closeServerDashboard);
+serverDashboardRefresh.addEventListener('click', refreshServerDashboard);
+serverDashboard.addEventListener('click', (e) => {
+  if (e.target === serverDashboard) closeServerDashboard();
+});
+
 // Close dialogs on Escape
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
+    if (!serverDashboard.hidden) closeServerDashboard();
     if (!sampleModal.hidden) closeSampleModal();
     if (!piperModal.hidden) closePiperModal();
     if (!contextMenu.hidden) hideContextMenu();

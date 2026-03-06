@@ -8,6 +8,9 @@ export type {
   SynthesisMetadata,
   SynthesisOptions,
   WordTimestamp,
+  PhonemeTimestamp,
+  SyllableTimestamp,
+  AlignmentGranularity,
   SentenceTimestamp,
   PhonemeMark,
   ProsodyHint,
@@ -19,6 +22,14 @@ export type {
   SemanticAnalysis,
   NativeRequest,
   NativeResponse,
+  SystemInfo,
+  VoiceValidation,
+  PiperCatalogVoice,
+  PiperDownloadResult,
+  VoiceSampleInfo,
+  VoiceSampleResult,
+  ServerProcessStats,
+  ServerManageResult,
 } from './types.js';
 
 // Engine adapters

@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Web-Vox Pro — Forced Alignment Workbench</title>
+<style>
+  :root {
+    --bg: #0e1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-dim: #8b949e;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --red: #f85149;
+    --orange: #d29922;
+    --purple: #bc8cff;
+    --cyan: #56d4dd;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    background: var(--bg); color: var(--text);
+    line-height: 1.5; padding: 0;
+  }
+
+  /* -- Layout -- */
+  .app { display: flex; flex-direction: column; min-height: 100vh; }
+  .main-panel { flex: 1; overflow-y: auto; padding: 24px 32px; max-width: 1200px; margin: 0 auto; width: 100%; }
+
+  /* -- Main Panel -- */
+  .main-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+  .main-header h1 { font-size: 22px; font-weight: 700; }
+  .connection-badge {
+    font-size: 12px; padding: 4px 12px; border-radius: 12px; font-weight: 600;
+  }
+  .connection-badge.online { background: rgba(63,185,80,0.15); color: var(--green); }
+  .connection-badge.offline { background: rgba(248,81,73,0.15); color: var(--red); }
+
+  /* -- Server Management Card -- */
+  .server-mgmt {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 20px; margin-bottom: 20px;
+  }
+  .server-mgmt h3 { font-size: 15px; margin-bottom: 14px; display: flex; align-items: center; gap: 10px; }
+  .server-mgmt h3 .ctrl-badge {
+    font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 600;
+  }
+  .ctrl-badge.online { background: rgba(63,185,80,0.15); color: var(--green); }
+  .ctrl-badge.offline { background: rgba(248,81,73,0.15); color: var(--red); }
+
+  .srv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 900px) { .srv-grid { grid-template-columns: 1fr; } }
+
+  .srv-card {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 16px; position: relative;
+  }
+  .srv-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .srv-name { font-size: 14px; font-weight: 600; }
+  .srv-status-dot {
+    width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px;
+  }
+  .srv-status-dot.on { background: var(--green); box-shadow: 0 0 6px rgba(63,185,80,0.5); }
+  .srv-status-dot.off { background: var(--red); }
+  .srv-status-dot.starting { background: var(--orange); animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+
+  .srv-meta { font-size: 12px; color: var(--text-dim); margin-bottom: 10px; }
+  .srv-meta span { margin-right: 14px; }
+
+  .srv-metrics { display: flex; gap: 16px; margin-bottom: 12px; }
+  .srv-metric {
+    flex: 1; background: var(--surface); border-radius: 6px; padding: 8px 10px;
+    text-align: center;
+  }
+  .srv-metric .metric-val { font-size: 18px; font-weight: 700; font-family: 'SF Mono', monospace; }
+  .srv-metric .metric-label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; }
+
+  .srv-chart {
+    height: 40px; background: var(--surface); border-radius: 4px; margin-bottom: 10px;
+    overflow: hidden; position: relative;
+  }
+  .srv-chart canvas { width: 100%; height: 100%; }
+
+  .srv-btns { display: flex; gap: 6px; }
+  .srv-btn {
+    padding: 5px 14px; border-radius: 5px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text); font-size: 12px;
+    cursor: pointer; font-weight: 500;
+  }
+  .srv-btn:hover { background: rgba(255,255,255,0.06); }
+  .srv-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .srv-btn.start { border-color: var(--green); color: var(--green); }
+  .srv-btn.stop { border-color: var(--red); color: var(--red); }
+  .srv-btn.restart { border-color: var(--orange); color: var(--orange); }
+
+  .srv-logs {
+    margin-top: 10px; max-height: 0; overflow: hidden;
+    transition: max-height 0.3s ease;
+  }
+  .srv-logs.open { max-height: 300px; }
+  .srv-logs-inner {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+    padding: 8px 10px; max-height: 200px; overflow-y: auto;
+    font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11px; color: var(--text-dim);
+  }
+  .srv-logs-inner .log-entry { padding: 1px 0; white-space: pre-wrap; word-break: break-all; }
+  .srv-logs-inner .log-entry.ERROR { color: var(--red); }
+  .srv-logs-inner .log-entry.START { color: var(--green); }
+  .srv-logs-inner .log-entry.STOP { color: var(--orange); }
+  .srv-logs-inner .log-entry.BUILD { color: var(--purple); }
+
+  .srv-log-toggle {
+    font-size: 11px; color: var(--accent); cursor: pointer; background: none;
+    border: none; padding: 0; margin-top: 6px;
+  }
+  .srv-log-toggle:hover { text-decoration: underline; }
+
+  /* -- Synthesis Card -- */
+  .synth-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 24px; margin-bottom: 20px;
+  }
+  .synth-card h3 { font-size: 16px; margin-bottom: 16px; }
+
+  .param-chip {
+    font-size: 12px; padding: 3px 10px; border-radius: 4px;
+    background: rgba(88,166,255,0.1); color: var(--accent); font-weight: 500;
+  }
+  .param-chip.alignment { background: rgba(188,140,255,0.1); color: var(--purple); }
+  .param-chip.rate { background: rgba(210,153,34,0.12); color: var(--orange); }
+
+  /* -- Voice Picker -- */
+  .voice-picker { margin-bottom: 16px; }
+  .voice-picker-controls { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  .voice-search-input {
+    flex: 1; min-width: 180px; padding: 7px 12px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--bg); color: var(--text);
+    font-size: 13px;
+  }
+  .voice-search-input:focus { border-color: var(--accent); outline: none; }
+  .voice-engine-filter {
+    padding: 7px 12px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); font-size: 13px;
+  }
+  .voice-list-container {
+    max-height: 260px; overflow-y: auto; border: 1px solid var(--border);
+    border-radius: 8px; background: var(--bg);
+  }
+  .voice-engine-group { border-bottom: 1px solid var(--border); }
+  .voice-engine-group:last-child { border-bottom: none; }
+  .voice-engine-header {
+    padding: 6px 12px; font-size: 11px; font-weight: 700; text-transform: uppercase;
+    color: var(--text-dim); background: rgba(255,255,255,0.02);
+    display: flex; align-items: center; gap: 8px; position: sticky; top: 0;
+    z-index: 1;
+  }
+  .voice-engine-header .engine-dot {
+    width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+  }
+  .voice-engine-header .engine-dot.online { background: var(--green); }
+  .voice-engine-header .engine-dot.offline { background: var(--red); }
+  .voice-engine-header .engine-count { margin-left: auto; font-weight: 400; font-size: 10px; }
+  .voice-item {
+    padding: 6px 12px 6px 24px; cursor: pointer; font-size: 13px;
+    display: flex; align-items: center; gap: 8px; transition: background 0.1s;
+  }
+  .voice-item:hover { background: rgba(255,255,255,0.04); }
+  .voice-item.selected { background: rgba(88,166,255,0.1); }
+  .voice-item .voice-name { flex: 1; }
+  .voice-item .voice-lang {
+    font-size: 11px; color: var(--text-dim); padding: 1px 6px;
+    background: rgba(255,255,255,0.04); border-radius: 3px;
+  }
+  .voice-item .voice-quality {
+    font-size: 10px; color: var(--purple); padding: 1px 5px;
+    background: rgba(188,140,255,0.08); border-radius: 3px;
+  }
+  .voice-selected-bar {
+    margin-top: 6px; padding: 6px 12px; border-radius: 6px; font-size: 12px;
+    background: rgba(88,166,255,0.06); border: 1px solid rgba(88,166,255,0.15);
+    color: var(--accent);
+  }
+  .voice-empty { padding: 16px; text-align: center; color: var(--text-dim); font-size: 13px; }
+
+  .input-text {
+    width: 100%; padding: 12px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); font-size: 14px; font-family: inherit;
+    resize: vertical; min-height: 80px;
+  }
+  .text-display {
+    padding: 16px; background: var(--bg); border-radius: 6px; border: 1px solid var(--border);
+    font-size: 16px; line-height: 2; min-height: 60px; margin: 12px 0;
+  }
+  .text-display .word {
+    padding: 2px 1px; border-radius: 3px; cursor: default; transition: background 0.1s;
+    position: relative;
+  }
+  .text-display .word.highlight { background: rgba(88,166,255,0.3); }
+  .text-display .word.playing { background: rgba(63,185,80,0.35); }
+  .word-tooltip {
+    position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+    background: #1c2128; border: 1px solid var(--border); border-radius: 6px;
+    padding: 8px 12px; font-size: 11px; white-space: nowrap; z-index: 10;
+    pointer-events: none; display: none;
+  }
+  .text-display .word:hover .word-tooltip { display: block; }
+
+  .controls-row { display: flex; gap: 10px; margin: 12px 0; flex-wrap: wrap; align-items: center; }
+  .btn {
+    padding: 8px 20px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text); font-size: 13px;
+    cursor: pointer; font-weight: 500;
+  }
+  .btn:hover { background: rgba(255,255,255,0.06); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn.primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; }
+  .btn.primary:hover { opacity: 0.9; }
+
+  .results-section { margin-top: 16px; }
+  .result-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+  .result-table th {
+    text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border);
+    color: var(--text-dim); font-weight: 600; font-size: 11px; text-transform: uppercase;
+  }
+  .result-table td {
+    padding: 5px 10px; border-bottom: 1px solid rgba(48,54,61,0.5);
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+  .confidence-bar {
+    width: 60px; height: 6px; background: var(--border); border-radius: 3px;
+    display: inline-block; vertical-align: middle; margin-right: 6px;
+  }
+  .confidence-bar-fill { height: 100%; border-radius: 3px; }
+  .syllable-chips { display: flex; gap: 3px; flex-wrap: wrap; }
+  .syl-chip {
+    font-size: 11px; padding: 1px 6px; border-radius: 3px;
+    background: rgba(188,140,255,0.12); color: var(--purple);
+  }
+
+  .log-section {
+    margin-top: 16px; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 12px; max-height: 200px; overflow-y: auto;
+    font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11px; color: var(--text-dim);
+  }
+  .log-line { padding: 1px 0; }
+  .log-line.error { color: var(--red); }
+  .log-line.success { color: var(--green); }
+  .log-line.info { color: var(--cyan); }
+
+  .spinner {
+    display: inline-block; width: 16px; height: 16px; border: 2px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite;
+    vertical-align: middle; margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  audio { width: 100%; margin: 8px 0; height: 36px; }
+
+  .inline-select {
+    padding: 7px 12px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); font-size: 13px;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="main-panel" id="mainPanel">
+    <div class="main-header">
+      <h1>Web-Vox Pro — Forced Alignment Workbench</h1>
+      <span class="connection-badge offline" id="connBadge">Disconnected</span>
+    </div>
+
+    <!-- Server Management -->
+    <div class="server-mgmt" id="serverMgmt">
+      <h3 style="cursor:pointer" onclick="document.getElementById('srvGrid').style.display=document.getElementById('srvGrid').style.display==='none'?'grid':'none'">
+        Server Control
+        <span class="ctrl-badge offline" id="ctrlBadge">Controller offline</span>
+        <span style="font-size:11px; font-weight:400; color:var(--text-dim); margin-left:auto">click to toggle</span>
+      </h3>
+      <div class="srv-grid" id="srvGrid"></div>
+    </div>
+
+    <!-- Synthesis Workbench -->
+    <div class="synth-card">
+      <h3>Synthesize</h3>
+
+      <div class="voice-picker" id="voicePicker"></div>
+
+      <label style="font-size:13px; font-weight:500">Text to synthesize:</label>
+      <textarea class="input-text" id="inputText" placeholder="Enter text to synthesize...">The quick brown fox jumps over the lazy dog.</textarea>
+
+      <div class="controls-row">
+        <label style="font-size:13px; font-weight:500">Alignment:</label>
+        <select class="inline-select" id="alignmentSelect">
+          <option value="none">none</option>
+          <option value="word">word</option>
+          <option value="word+syllable" selected>word+syllable</option>
+          <option value="word+phoneme">word+phoneme</option>
+          <option value="full">full</option>
+        </select>
+
+        <label style="font-size:13px; font-weight:500; margin-left:12px">Speed:</label>
+        <input type="range" id="rateSlider" min="0.5" max="4.0" step="0.25" value="1.0"
+          style="width:140px" oninput="document.getElementById('rateValue').textContent=this.value+'x'">
+        <span id="rateValue" style="font-size:14px; font-weight:600; min-width:40px">1.0x</span>
+      </div>
+
+      <div class="controls-row">
+        <button class="btn primary" id="runBtn" onclick="runSynth()">Synthesize</button>
+        <button class="btn" id="playBtn" disabled onclick="playAudio()">Play Audio</button>
+      </div>
+
+      <div id="textDisplay" class="text-display" style="display:none"></div>
+      <audio id="audioPlayer" controls style="display:none"></audio>
+
+      <div id="resultsSection" class="results-section" style="display:none">
+        <h4 style="font-size:14px; margin-bottom:8px">Word Boundaries</h4>
+        <div id="resultsTable"></div>
+      </div>
+
+      <div class="log-section" id="logPanel"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const CTRL_URL = 'http://127.0.0.1:8098';
+
+let ws = null;
+let voices = [];
+let pendingResolve = null;
+let collectedBoundaries = [];
+let collectedChunks = [];
+let audioCtx = null;
+let controllerOnline = false;
+let srvStatusCache = {};
+let metricsHistoryCache = {};
+let statusPollTimer = null;
+let selectedVoiceId = null;
+let knownServerKeys = [];
+
+// ── Startup ──────────────────────────────────────────────────
+
+async function init() {
+  await pollControllerStatus();
+  startStatusPolling();
+  try {
+    await connectWs();
+    voices = await listVoices();
+    document.getElementById('connBadge').className = 'connection-badge online';
+    document.getElementById('connBadge').textContent = `Connected (${voices.length} voices)`;
+  } catch {}
+  renderVoicePicker();
+}
+
+// ── Server Control ───────────────────────────────────────────
+
+function renderServerCards(serverData) {
+  const grid = document.getElementById('srvGrid');
+  const keys = Object.keys(serverData || {});
+  if (!keys.length) {
+    grid.innerHTML = '<p style="color:var(--text-dim);font-size:13px;grid-column:1/-1">Controller not reachable</p>';
+    return;
+  }
+  const keyStr = keys.join(',');
+  if (keyStr === knownServerKeys.join(',')) return;
+  knownServerKeys = keys;
+
+  grid.innerHTML = keys.map(key => {
+    const s = serverData[key];
+    return serverCardHtml(key, s.name, s.port);
+  }).join('');
+}
+
+function serverCardHtml(key, name, port) {
+  return `
+    <div class="srv-card" id="srv-card-${key}">
+      <div class="srv-card-header">
+        <span class="srv-name"><span class="srv-status-dot off" id="srv-dot-${key}"></span>${name}</span>
+        <span style="font-size:11px; color:var(--text-dim)">:${port}</span>
+      </div>
+      <div class="srv-meta" id="srv-meta-${key}">
+        <span>PID: —</span><span>Uptime: —</span>
+      </div>
+      <div class="srv-metrics">
+        <div class="srv-metric">
+          <div class="metric-val" id="srv-cpu-${key}">—</div>
+          <div class="metric-label">CPU %</div>
+        </div>
+        <div class="srv-metric">
+          <div class="metric-val" id="srv-mem-${key}">—</div>
+          <div class="metric-label">Mem MB</div>
+        </div>
+      </div>
+      <div class="srv-chart" id="srv-chart-${key}">
+        <canvas id="srv-canvas-${key}"></canvas>
+      </div>
+      <div class="srv-btns">
+        <button class="srv-btn start" id="srv-start-${key}" onclick="srvAction('${key}','start')">Start</button>
+        <button class="srv-btn stop" id="srv-stop-${key}" onclick="srvAction('${key}','stop')" disabled>Stop</button>
+        <button class="srv-btn restart" id="srv-restart-${key}" onclick="srvAction('${key}','restart')" disabled>Restart</button>
+      </div>
+      <button class="srv-log-toggle" onclick="toggleSrvLogs('${key}')">Show logs</button>
+      <div class="srv-logs" id="srv-logs-${key}">
+        <div class="srv-logs-inner" id="srv-logs-inner-${key}"></div>
+      </div>
+    </div>
+  `;
+}
+
+async function srvAction(key, action) {
+  if (!controllerOnline) {
+    alert('Test controller is not running.\nStart it with: python3 test-controller.py');
+    return;
+  }
+  const btns = ['start', 'stop', 'restart'].map(a => document.getElementById(`srv-${a}-${key}`));
+  btns.forEach(b => b.disabled = true);
+
+  const dot = document.getElementById(`srv-dot-${key}`);
+  dot.className = 'srv-status-dot starting';
+
+  try {
+    const r = await fetch(`${CTRL_URL}/${action}/${key}`, { method: 'POST' });
+    const d = await r.json();
+    if (!d.ok) alert(`${action} failed: ${d.msg || 'unknown error'}`);
+  } catch (e) {
+    alert(`Controller request failed: ${e.message}`);
+  }
+
+  await pollControllerStatus();
+  await fetchSrvLogs(key);
+
+  // Refresh voices after starting a server
+  setTimeout(async () => {
+    try {
+      if (!ws || ws.readyState !== WebSocket.OPEN) await connectWs();
+      voices = await listVoices();
+      document.getElementById('connBadge').className = 'connection-badge online';
+      document.getElementById('connBadge').textContent = `Connected (${voices.length} voices)`;
+      renderVoicePicker();
+    } catch {}
+  }, 2000);
+}
+
+async function pollControllerStatus() {
+  try {
+    const r = await fetch(`${CTRL_URL}/status`);
+    const data = await r.json();
+    controllerOnline = true;
+    document.getElementById('ctrlBadge').className = 'ctrl-badge online';
+    document.getElementById('ctrlBadge').textContent = 'Controller online';
+
+    renderServerCards(data);
+    for (const [key, status] of Object.entries(data)) {
+      srvStatusCache[key] = status;
+      updateServerCard(key, status);
+    }
+  } catch {
+    controllerOnline = false;
+    document.getElementById('ctrlBadge').className = 'ctrl-badge offline';
+    document.getElementById('ctrlBadge').textContent = 'Controller offline — run: python3 test-controller.py';
+    for (const key of knownServerKeys) {
+      updateServerCard(key, { running: false, pid: null, uptime_secs: 0, cpu_percent: 0, memory_mb: 0 });
+    }
+  }
+}
+
+async function pollMetrics() {
+  if (!controllerOnline) return;
+  try {
+    const r = await fetch(`${CTRL_URL}/metrics`);
+    const data = await r.json();
+    for (const [key, m] of Object.entries(data)) {
+      if (m.current) {
+        document.getElementById(`srv-cpu-${key}`).textContent = m.current.cpu_percent.toFixed(1);
+        document.getElementById(`srv-mem-${key}`).textContent = m.current.memory_mb.toFixed(1);
+      }
+      if (m.history && m.history.length > 0) {
+        metricsHistoryCache[key] = m.history;
+        drawChart(key, m.history);
+      }
+    }
+  } catch {}
+}
+
+function updateServerCard(key, status) {
+  const dot = document.getElementById(`srv-dot-${key}`);
+  dot.className = `srv-status-dot ${status.running ? 'on' : 'off'}`;
+
+  const meta = document.getElementById(`srv-meta-${key}`);
+  const uptime = status.running ? formatUptime(status.uptime_secs) : '—';
+  meta.innerHTML = `<span>PID: ${status.pid || '—'}</span><span>Uptime: ${uptime}</span>`;
+
+  const cpuEl = document.getElementById(`srv-cpu-${key}`);
+  const memEl = document.getElementById(`srv-mem-${key}`);
+  cpuEl.textContent = status.running ? status.cpu_percent.toFixed(1) : '—';
+  memEl.textContent = status.running ? status.memory_mb.toFixed(1) : '—';
+
+  document.getElementById(`srv-start-${key}`).disabled = status.running || !controllerOnline;
+  document.getElementById(`srv-stop-${key}`).disabled = !status.running || !controllerOnline;
+  document.getElementById(`srv-restart-${key}`).disabled = !status.running || !controllerOnline;
+}
+
+function formatUptime(secs) {
+  if (secs < 60) return `${Math.floor(secs)}s`;
+  if (secs < 3600) return `${Math.floor(secs / 60)}m ${Math.floor(secs % 60)}s`;
+  return `${Math.floor(secs / 3600)}h ${Math.floor((secs % 3600) / 60)}m`;
+}
+
+function toggleSrvLogs(key) {
+  const el = document.getElementById(`srv-logs-${key}`);
+  const isOpen = el.classList.toggle('open');
+  el.previousElementSibling.textContent = isOpen ? 'Hide logs' : 'Show logs';
+  if (isOpen) fetchSrvLogs(key);
+}
+
+async function fetchSrvLogs(key) {
+  if (!controllerOnline) return;
+  try {
+    const r = await fetch(`${CTRL_URL}/logs/${key}`);
+    const d = await r.json();
+    const container = document.getElementById(`srv-logs-inner-${key}`);
+    container.innerHTML = (d.logs || []).map(e =>
+      `<div class="log-entry ${e.level}">[${e.time_str}] ${e.msg}</div>`
+    ).join('');
+    container.scrollTop = container.scrollHeight;
+  } catch {}
+}
+
+function startStatusPolling() {
+  if (statusPollTimer) clearInterval(statusPollTimer);
+  statusPollTimer = setInterval(async () => {
+    await pollControllerStatus();
+    await pollMetrics();
+    for (const key of knownServerKeys) {
+      const el = document.getElementById(`srv-logs-${key}`);
+      if (el && el.classList.contains('open')) fetchSrvLogs(key);
+    }
+  }, 5000);
+}
+
+// ── Mini Chart ───────────────────────────────────────────────
+
+function drawChart(key, history) {
+  const canvas = document.getElementById(`srv-canvas-${key}`);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width * 2;
+  canvas.height = rect.height * 2;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (history.length < 2) return;
+
+  const cpuVals = history.map(h => h.cpu_percent);
+  const memVals = history.map(h => h.memory_mb);
+  const maxCpu = Math.max(10, ...cpuVals);
+  const maxMem = Math.max(10, ...memVals);
+  const w = canvas.width;
+  const h = canvas.height;
+  const n = cpuVals.length;
+
+  ctx.strokeStyle = 'rgba(86,212,221,0.7)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  cpuVals.forEach((v, i) => {
+    const x = (i / (n - 1)) * w;
+    const y = h - (v / maxCpu) * h;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(188,140,255,0.6)';
+  ctx.beginPath();
+  memVals.forEach((v, i) => {
+    const x = (i / (n - 1)) * w;
+    const y = h - (v / maxMem) * h;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  ctx.font = '16px sans-serif';
+  ctx.fillStyle = 'rgba(86,212,221,0.8)';
+  ctx.fillText('CPU', 6, 16);
+  ctx.fillStyle = 'rgba(188,140,255,0.7)';
+  ctx.fillText('MEM', 50, 16);
+}
+
+// ── WebSocket ────────────────────────────────────────────────
+
+function connectWs() {
+  return new Promise((resolve, reject) => {
+    if (ws && ws.readyState === WebSocket.OPEN) { resolve(); return; }
+    try { ws = new WebSocket('ws://127.0.0.1:21740'); } catch (e) { reject(e); return; }
+    const timer = setTimeout(() => { ws.close(); reject(new Error('timeout')); }, 5000);
+    ws.onopen = () => { clearTimeout(timer); setupWsHandler(); resolve(); };
+    ws.onerror = () => { clearTimeout(timer); reject(new Error('connection failed')); };
+    ws.onclose = () => {
+      document.getElementById('connBadge').className = 'connection-badge offline';
+      document.getElementById('connBadge').textContent = 'Disconnected';
+    };
+  });
+}
+
+function setupWsHandler() {
+  ws.onmessage = (ev) => {
+    const msg = JSON.parse(ev.data);
+    if (msg.type === 'word_boundary') collectedBoundaries.push(msg);
+    else if (msg.type === 'audio_chunk') collectedChunks.push(msg);
+    else if (pendingResolve) { pendingResolve(msg); pendingResolve = null; }
+  };
+}
+
+function wsSend(obj) {
+  return new Promise((resolve, reject) => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) { reject(new Error('Not connected')); return; }
+    pendingResolve = resolve;
+    ws.send(JSON.stringify(obj));
+  });
+}
+
+function listVoices() {
+  return new Promise(async (resolve, reject) => {
+    try { const resp = await wsSend({ type: 'list_voices' }); resolve(resp.voices || []); }
+    catch (e) { reject(e); }
+  });
+}
+
+// ── Voice Picker ─────────────────────────────────────────────
+
+function renderVoicePicker() {
+  const picker = document.getElementById('voicePicker');
+  const enginesFromVoices = [...new Set(voices.map(v => v.engine))];
+  const enginesFromServers = Object.values(srvStatusCache)
+    .filter(s => s.key !== 'ws' && s.key !== 'alignment')
+    .map(s => s.key);
+  const allEngines = [...new Set([...enginesFromVoices, ...enginesFromServers])].sort();
+
+  const engineOptions = allEngines.map(e =>
+    `<option value="${e}">${e}</option>`
+  ).join('');
+
+  picker.innerHTML = `
+    <div class="voice-picker-controls">
+      <input type="text" class="voice-search-input" id="voiceSearchInput"
+        placeholder="Search voices by name, language, engine..."
+        oninput="filterVoices()" autocomplete="off" />
+      <select class="voice-engine-filter" id="voiceEngineFilter" onchange="filterVoices()">
+        <option value="">All Engines</option>
+        ${engineOptions}
+      </select>
+    </div>
+    <div class="voice-list-container" id="voiceListContainer">
+      ${renderVoiceList(voices)}
+    </div>
+    <div class="voice-selected-bar" id="voiceSelectedBar">
+      ${selectedVoiceId ? formatSelectedVoice() : 'No voice selected — click a voice above'}
+    </div>
+  `;
+}
+
+function renderVoiceList(voiceList) {
+  if (!voiceList.length) {
+    const offlineEngines = Object.values(srvStatusCache)
+      .filter(s => !s.running && s.key !== 'ws' && s.key !== 'alignment');
+    let hint = '';
+    if (offlineEngines.length) {
+      hint = `<br><span style="font-size:11px">Start engines in Server Control: ${offlineEngines.map(s => s.name).join(', ')}</span>`;
+    }
+    return `<div class="voice-empty">No voices available${hint}</div>`;
+  }
+
+  const byEngine = {};
+  voiceList.forEach(v => {
+    if (!byEngine[v.engine]) byEngine[v.engine] = [];
+    byEngine[v.engine].push(v);
+  });
+
+  const engineOrder = Object.keys(byEngine).sort((a, b) => {
+    const aOnline = srvStatusCache[a]?.running ? 0 : 1;
+    const bOnline = srvStatusCache[b]?.running ? 0 : 1;
+    if (aOnline !== bOnline) return aOnline - bOnline;
+    return a.localeCompare(b);
+  });
+
+  let html = '';
+  for (const engine of engineOrder) {
+    const vs = byEngine[engine];
+    const serverStatus = srvStatusCache[engine];
+    const isOnline = engine === 'macos-avspeech' || engine === 'espeak-ng' || engine === 'piper'
+      || (serverStatus && serverStatus.running);
+    const dotClass = isOnline ? 'online' : 'offline';
+
+    html += `<div class="voice-engine-group">`;
+    html += `<div class="voice-engine-header">
+      <span class="engine-dot ${dotClass}"></span>
+      ${engine}
+      <span class="engine-count">${vs.length} voice${vs.length !== 1 ? 's' : ''}</span>
+    </div>`;
+    for (const v of vs) {
+      const sel = v.id === selectedVoiceId ? ' selected' : '';
+      const langTag = v.language ? `<span class="voice-lang">${v.language}</span>` : '';
+      const qualityTag = v.quality ? `<span class="voice-quality">${v.quality}</span>` : '';
+      html += `<div class="voice-item${sel}" onclick="selectVoice('${v.id.replace(/'/g, "\\'")}')" data-id="${v.id}">
+        <span class="voice-name">${v.name}</span>
+        ${langTag}${qualityTag}
+      </div>`;
+    }
+    html += `</div>`;
+  }
+  return html;
+}
+
+function filterVoices() {
+  const search = (document.getElementById('voiceSearchInput')?.value || '').toLowerCase();
+  const engineFilter = document.getElementById('voiceEngineFilter')?.value || '';
+
+  let filtered = voices;
+  if (engineFilter) filtered = filtered.filter(v => v.engine === engineFilter);
+  if (search) {
+    filtered = filtered.filter(v =>
+      v.name.toLowerCase().includes(search) ||
+      v.id.toLowerCase().includes(search) ||
+      (v.language || '').toLowerCase().includes(search) ||
+      v.engine.toLowerCase().includes(search) ||
+      (v.quality || '').toLowerCase().includes(search)
+    );
+  }
+
+  const container = document.getElementById('voiceListContainer');
+  if (container) container.innerHTML = renderVoiceList(filtered);
+}
+
+function selectVoice(id) {
+  selectedVoiceId = id;
+  document.querySelectorAll('.voice-item').forEach(el => {
+    el.classList.toggle('selected', el.dataset.id === id);
+  });
+  const bar = document.getElementById('voiceSelectedBar');
+  if (bar) bar.innerHTML = formatSelectedVoice();
+}
+
+function formatSelectedVoice() {
+  const v = voices.find(v => v.id === selectedVoiceId);
+  if (!v) return `Selected: ${selectedVoiceId}`;
+  return `<strong>${v.name}</strong> &nbsp; ${v.engine} &nbsp; ${v.language || ''} ${v.quality ? '&middot; ' + v.quality : ''}`;
+}
+
+// ── Synthesize ───────────────────────────────────────────────
+
+async function runSynth() {
+  const text = document.getElementById('inputText').value.trim();
+  if (!text) { alert('Enter some text to synthesize.'); return; }
+
+  const voiceId = selectedVoiceId || 'com.apple.voice.compact.en-US.Samantha';
+  const alignment = document.getElementById('alignmentSelect').value;
+  const rate = parseFloat(document.getElementById('rateSlider').value);
+
+  const runBtn = document.getElementById('runBtn');
+  const logPanel = document.getElementById('logPanel');
+
+  runBtn.disabled = true;
+  runBtn.innerHTML = '<span class="spinner"></span>Synthesizing...';
+  logPanel.innerHTML = '';
+  log('info', `Voice: ${voiceId}, Alignment: ${alignment}, Rate: ${rate}`);
+
+  collectedBoundaries = [];
+  collectedChunks = [];
+  const reqId = `synth-${Date.now()}`;
+
+  try {
+    if (!ws || ws.readyState !== WebSocket.OPEN) await connectWs();
+
+    const req = {
+      type: 'synthesize', id: reqId, text: text,
+      voice_id: voiceId, rate: rate,
+      pitch: 1.0, volume: 1.0, alignment: alignment,
+    };
+
+    log('info', `Sending synthesize request (id=${reqId})...`);
+    const t0 = performance.now();
+
+    const result = await new Promise((resolve, reject) => {
+      const origHandler = ws.onmessage;
+      const timer = setTimeout(() => { ws.onmessage = origHandler; reject(new Error('Synthesis timed out (120s)')); }, 120000);
+      ws.onmessage = (ev) => {
+        const msg = JSON.parse(ev.data);
+        if (msg.id !== reqId && msg.type !== 'voice_list') return;
+        if (msg.type === 'word_boundary') collectedBoundaries.push(msg);
+        else if (msg.type === 'audio_chunk') collectedChunks.push(msg);
+        else if (msg.type === 'synthesis_complete') { clearTimeout(timer); ws.onmessage = origHandler; resolve(msg); }
+        else if (msg.type === 'error') { clearTimeout(timer); ws.onmessage = origHandler; reject(new Error(msg.message || 'Synthesis error')); }
+      };
+      ws.send(JSON.stringify(req));
+    });
+
+    const elapsed = ((performance.now() - t0) / 1000).toFixed(2);
+    log('success', `Synthesis complete in ${elapsed}s — duration: ${result.total_duration_ms?.toFixed(0)}ms`);
+    log('info', `Received ${collectedChunks.length} audio chunks, ${collectedBoundaries.length} word boundaries`);
+
+    buildAudio(collectedChunks);
+    renderWordDisplay(text, collectedBoundaries);
+    renderResultsTable(collectedBoundaries);
+  } catch (e) {
+    log('error', `Synthesis failed: ${e.message}`);
+  }
+
+  runBtn.disabled = false;
+  runBtn.innerHTML = 'Synthesize';
+}
+
+// ── Audio ────────────────────────────────────────────────────
+
+function buildAudio(chunks) {
+  if (!chunks.length) return;
+  if (!audioCtx) audioCtx = new AudioContext();
+
+  const sorted = [...chunks].sort((a, b) => a.sequence - b.sequence);
+  const sampleRate = sorted[0].sample_rate || 22050;
+  const channels = sorted[0].channels || 1;
+
+  const pcmArrays = sorted.map(c => {
+    const binary = atob(c.data_base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new Float32Array(bytes.buffer);
+  });
+
+  const totalLen = pcmArrays.reduce((s, a) => s + a.length, 0);
+  const samples = new Float32Array(totalLen);
+  let off = 0;
+  for (const a of pcmArrays) { samples.set(a, off); off += a.length; }
+
+  const wavBuffer = createWav(samples, sampleRate, channels);
+  const blob = new Blob([wavBuffer], { type: 'audio/wav' });
+  const url = URL.createObjectURL(blob);
+
+  const player = document.getElementById('audioPlayer');
+  player.src = url;
+  player.style.display = 'block';
+  document.getElementById('playBtn').disabled = false;
+
+  // rAF-based highlighting for smooth tracking at any speed
+  let highlightRaf = null;
+  let wordCache = null;
+
+  function buildWordCache() {
+    wordCache = [];
+    document.querySelectorAll('#textDisplay .word').forEach(el => {
+      wordCache.push({ el, start: parseFloat(el.dataset.start), end: parseFloat(el.dataset.end) });
+    });
+  }
+
+  function tickHighlight() {
+    if (player.paused || player.ended) return;
+    const ms = player.currentTime * 1000;
+    if (!wordCache) buildWordCache();
+
+    let found = false;
+    for (let i = 0; i < wordCache.length; i++) {
+      const w = wordCache[i];
+      const active = ms >= w.start && ms < w.end;
+      if (active && !w.el.classList.contains('playing')) {
+        for (let j = 0; j < wordCache.length; j++) wordCache[j].el.classList.remove('playing');
+        w.el.classList.add('playing');
+        found = true;
+        break;
+      } else if (active) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      for (let i = wordCache.length - 1; i >= 0; i--) {
+        if (ms >= wordCache[i].end) {
+          if (i + 1 < wordCache.length && ms < wordCache[i + 1].start) {
+            for (let j = 0; j < wordCache.length; j++) wordCache[j].el.classList.remove('playing');
+            wordCache[i].el.classList.add('playing');
+          }
+          break;
+        }
+      }
+    }
+    highlightRaf = requestAnimationFrame(tickHighlight);
+  }
+
+  player.onplay = () => {
+    wordCache = null;
+    highlightRaf = requestAnimationFrame(tickHighlight);
+  };
+  player.onpause = () => { if (highlightRaf) cancelAnimationFrame(highlightRaf); };
+  player.onended = () => {
+    if (highlightRaf) cancelAnimationFrame(highlightRaf);
+    document.querySelectorAll('#textDisplay .word.playing').forEach(el => el.classList.remove('playing'));
+  };
+  player.onseeked = () => { wordCache = null; };
+}
+
+function playAudio() {
+  const player = document.getElementById('audioPlayer');
+  if (player.src) player.play();
+}
+
+function createWav(samples, sampleRate, channels) {
+  const bitsPerSample = 16, bytesPerSample = 2;
+  const dataLength = samples.length * bytesPerSample;
+  const buffer = new ArrayBuffer(44 + dataLength);
+  const view = new DataView(buffer);
+  const writeStr = (off, str) => { for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i)); };
+  writeStr(0, 'RIFF');
+  view.setUint32(4, 36 + dataLength, true);
+  writeStr(8, 'WAVE'); writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+  view.setUint16(22, channels, true); view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * channels * bytesPerSample, true);
+  view.setUint16(32, channels * bytesPerSample, true); view.setUint16(34, bitsPerSample, true);
+  writeStr(36, 'data'); view.setUint32(40, dataLength, true);
+  let off = 44;
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+    off += 2;
+  }
+  return buffer;
+}
+
+// ── Word Display ─────────────────────────────────────────────
+
+function renderWordDisplay(text, boundaries) {
+  const display = document.getElementById('textDisplay');
+  display.style.display = 'block';
+  if (!boundaries.length) {
+    display.innerHTML = `<span style="color:var(--text-dim)">No word boundaries received</span>`;
+    return;
+  }
+  let html = '';
+  let lastEnd = 0;
+  boundaries.forEach((b, i) => {
+    if (b.char_offset > lastEnd) html += text.substring(lastEnd, b.char_offset);
+    const conf = b.confidence != null ? (b.confidence * 100).toFixed(0) + '%' : 'N/A';
+    const sylText = b.syllables ? b.syllables.map(s =>
+      `${s.text} (${s.start_time_ms.toFixed(0)}-${s.end_time_ms.toFixed(0)}ms)`
+    ).join(', ') : 'none';
+    html += `<span class="word" data-idx="${i}" data-start="${b.start_time_ms}" data-end="${b.end_time_ms}">`;
+    html += text.substring(b.char_offset, b.char_offset + b.char_length);
+    html += `<span class="word-tooltip">
+      <strong>${b.word}</strong><br>
+      ${b.start_time_ms.toFixed(0)} – ${b.end_time_ms.toFixed(0)} ms<br>
+      Confidence: ${conf}<br>
+      Syllables: ${sylText}
+    </span></span>`;
+    lastEnd = b.char_offset + b.char_length;
+  });
+  if (lastEnd < text.length) html += text.substring(lastEnd);
+  display.innerHTML = html;
+}
+
+// ── Results Table ────────────────────────────────────────────
+
+function renderResultsTable(boundaries) {
+  const section = document.getElementById('resultsSection');
+  const container = document.getElementById('resultsTable');
+  section.style.display = 'block';
+  if (!boundaries.length) {
+    container.innerHTML = '<p style="color:var(--text-dim);font-size:13px">No boundaries to display</p>';
+    return;
+  }
+  let html = `<table class="result-table"><thead><tr>
+    <th>#</th><th>Word</th><th>Start</th><th>End</th><th>Duration</th>
+    <th>Confidence</th><th>Syllables</th>
+  </tr></thead><tbody>`;
+  boundaries.forEach((b, i) => {
+    const dur = (b.end_time_ms - b.start_time_ms).toFixed(0);
+    let confHtml = '<span style="color:var(--text-dim)">—</span>';
+    if (b.confidence != null) {
+      const pct = (b.confidence * 100).toFixed(0);
+      const color = b.confidence > 0.7 ? 'var(--green)' : b.confidence > 0.4 ? 'var(--orange)' : 'var(--red)';
+      confHtml = `<span class="confidence-bar"><span class="confidence-bar-fill" style="width:${pct}%;background:${color}"></span></span>${pct}%`;
+    }
+    let sylHtml = '<span style="color:var(--text-dim)">—</span>';
+    if (b.syllables && b.syllables.length) {
+      sylHtml = '<div class="syllable-chips">' + b.syllables.map(s =>
+        `<span class="syl-chip" title="${s.start_time_ms.toFixed(0)}-${s.end_time_ms.toFixed(0)}ms">${s.text}</span>`
+      ).join('') + '</div>';
+    }
+    html += `<tr><td>${i+1}</td><td>${b.word}</td><td>${b.start_time_ms.toFixed(0)}ms</td><td>${b.end_time_ms.toFixed(0)}ms</td><td>${dur}ms</td><td>${confHtml}</td><td>${sylHtml}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+// ── Log ──────────────────────────────────────────────────────
+
+function log(level, msg) {
+  const panel = document.getElementById('logPanel');
+  if (!panel) return;
+  const time = new Date().toLocaleTimeString();
+  panel.innerHTML += `<div class="log-line ${level}">[${time}] ${msg}</div>`;
+  panel.scrollTop = panel.scrollHeight;
+}
+
+// ── Init ─────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>

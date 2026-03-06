@@ -6,6 +6,22 @@ export interface WordTimestamp {
   charLength: number;
   startTimeMs: number;
   endTimeMs: number;
+  confidence?: number;
+  phonemes?: PhonemeTimestamp[];
+  syllables?: SyllableTimestamp[];
+}
+
+export interface PhonemeTimestamp {
+  phoneme: string;
+  startTimeMs: number;
+  endTimeMs: number;
+}
+
+export interface SyllableTimestamp {
+  text: string;
+  charOffset?: number;
+  startTimeMs: number;
+  endTimeMs: number;
 }
 
 export interface SentenceTimestamp {
@@ -55,6 +71,25 @@ export interface VoiceInfo {
   gender?: 'male' | 'female' | 'neutral';
   engine: string;
   localeName?: string;
+  quality?: string;
+  description?: string;
+  sampleRate?: number;
+}
+
+export interface SystemInfo {
+  os: string;
+  osVersion: string;
+  arch: string;
+  cpuCores: number;
+  availableEngines: string[];
+  hostname: string;
+}
+
+export interface VoiceValidation {
+  voiceId: string;
+  valid: boolean;
+  error?: string;
+  suggestion?: string;
 }
 
 // -- Engine Types --
@@ -71,6 +106,8 @@ export interface EngineCapabilities {
   minRate: number;
 }
 
+export type AlignmentGranularity = 'none' | 'word' | 'word+syllable' | 'word+phoneme' | 'full';
+
 export interface SynthesisOptions {
   voice?: string;
   rate?: number;   // 0.1 - 10.0, default 1.0
@@ -79,6 +116,7 @@ export interface SynthesisOptions {
   engine?: string;
   ssml?: boolean;
   format?: 'audiobuffer' | 'arraybuffer' | 'blob';
+  alignment?: AlignmentGranularity;
 }
 
 export interface AudioChunk {
@@ -108,18 +146,82 @@ export interface EffectConfig {
 
 // -- Transport / Native Protocol Types --
 
+export interface PiperCatalogVoice {
+  key: string;
+  name: string;
+  language: string;
+  language_name: string;
+  quality: string;
+  num_speakers: number;
+  size_bytes: number;
+  installed: boolean;
+}
+
+export interface PiperDownloadResult {
+  key: string;
+  success: boolean;
+  error?: string;
+}
+
+export interface VoiceSampleInfo {
+  name: string;
+  filename: string;
+  size_bytes: number;
+}
+
+export interface VoiceSampleResult {
+  name: string;
+  success: boolean;
+  error?: string;
+}
+
+export interface UsageLogEntry {
+  timestamp: number;
+  cpu_percent: number;
+  memory_mb: number;
+  online: boolean;
+}
+
+export interface ServerProcessStats {
+  engine: string;
+  name: string;
+  port: number;
+  online: boolean;
+  pid?: number;
+  cpu_percent: number;
+  memory_mb: number;
+  uptime_secs: number;
+  cpu_history: number[];
+  memory_history: number[];
+  usage_log: UsageLogEntry[];
+  managed: boolean;
+}
+
+export interface ServerManageResult {
+  engine: string;
+  action: string;
+  success: boolean;
+  error?: string;
+}
+
 export interface NativeRequest {
-  type: 'synthesize' | 'cancel' | 'list_voices';
+  type: 'synthesize' | 'cancel' | 'list_voices' | 'get_system_info' | 'validate_voice' | 'list_piper_catalog' | 'download_piper_voice' | 'list_voice_samples' | 'upload_voice_sample' | 'delete_voice_sample' | 'manage_server' | 'get_server_stats';
   id?: string;
   text?: string;
   voice_id?: string;
+  key?: string;
+  name?: string;
+  data_base64?: string;
+  engine?: string;
+  action?: string;
   rate?: number;
   pitch?: number;
   volume?: number;
+  alignment?: AlignmentGranularity;
 }
 
 export interface NativeResponse {
-  type: 'audio_chunk' | 'word_boundary' | 'synthesis_complete' | 'voice_list' | 'error';
+  type: 'audio_chunk' | 'word_boundary' | 'synthesis_complete' | 'voice_list' | 'error' | 'system_info' | 'voice_validation' | 'piper_catalog' | 'piper_download_complete' | 'voice_samples' | 'voice_sample_result' | 'server_manage_result' | 'server_stats';
   id?: string;
   [key: string]: unknown;
 }
@@ -133,6 +235,19 @@ export interface NativeAudioChunk {
   channels: number;
 }
 
+export interface NativePhonemeBoundary {
+  phoneme: string;
+  start_time_ms: number;
+  end_time_ms: number;
+}
+
+export interface NativeSyllableBoundary {
+  text: string;
+  char_offset?: number;
+  start_time_ms: number;
+  end_time_ms: number;
+}
+
 export interface NativeWordBoundary {
   id: string;
   word: string;
@@ -140,6 +255,9 @@ export interface NativeWordBoundary {
   char_length: number;
   start_time_ms: number;
   end_time_ms: number;
+  confidence?: number;
+  phonemes?: NativePhonemeBoundary[];
+  syllables?: NativeSyllableBoundary[];
 }
 
 export interface NativeVoiceDescriptor {
@@ -148,6 +266,9 @@ export interface NativeVoiceDescriptor {
   language: string;
   gender?: string;
   engine: string;
+  quality?: string;
+  description?: string;
+  sample_rate?: number;
 }
 
 // -- Semantic Types --

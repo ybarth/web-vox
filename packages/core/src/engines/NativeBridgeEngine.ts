@@ -7,6 +7,14 @@ import type {
   NativeWordBoundary,
   NativeVoiceDescriptor,
   WordTimestamp,
+  SystemInfo,
+  VoiceValidation,
+  PiperCatalogVoice,
+  PiperDownloadResult,
+  VoiceSampleInfo,
+  VoiceSampleResult,
+  ServerProcessStats,
+  ServerManageResult,
 } from '../types.js';
 import type { EngineAdapter } from './EngineAdapter.js';
 import type { TransportAdapter } from '../transport/TransportAdapter.js';
@@ -104,8 +112,109 @@ export class NativeBridgeEngine implements EngineAdapter {
       language: v.language,
       gender: v.gender as VoiceInfo['gender'],
       engine: v.engine,
+      quality: v.quality,
+      description: v.description,
+      sampleRate: v.sample_rate,
     }));
     return this.voices;
+  }
+
+  async getSystemInfo(): Promise<SystemInfo> {
+    if (!this.transport) throw new Error('Not initialized');
+    const response = await this.transport.send({ type: 'get_system_info' });
+    const info = response as unknown as {
+      os: string; os_version: string; arch: string;
+      cpu_cores: number; available_engines: string[]; hostname: string;
+    };
+    return {
+      os: info.os,
+      osVersion: info.os_version,
+      arch: info.arch,
+      cpuCores: info.cpu_cores,
+      availableEngines: info.available_engines,
+      hostname: info.hostname,
+    };
+  }
+
+  async validateVoice(voiceId: string): Promise<VoiceValidation> {
+    if (!this.transport) throw new Error('Not initialized');
+    const response = await this.transport.send({ type: 'validate_voice', voice_id: voiceId });
+    const v = response as unknown as {
+      voice_id: string; valid: boolean; error?: string; suggestion?: string;
+    };
+    return {
+      voiceId: v.voice_id,
+      valid: v.valid,
+      error: v.error,
+      suggestion: v.suggestion,
+    };
+  }
+
+  async listPiperCatalog(): Promise<PiperCatalogVoice[]> {
+    if (!this.transport) throw new Error('Not initialized');
+    const response = await this.transport.send({ type: 'list_piper_catalog' });
+    if (response.type === 'error') {
+      throw new Error((response as unknown as { message: string }).message ?? 'Failed to fetch catalog');
+    }
+    return (response as unknown as { voices: PiperCatalogVoice[] }).voices ?? [];
+  }
+
+  async downloadPiperVoice(key: string): Promise<PiperDownloadResult> {
+    if (!this.transport) throw new Error('Not initialized');
+    const response = await this.transport.send({ type: 'download_piper_voice', key });
+    if (response.type === 'error') {
+      throw new Error((response as unknown as { message: string }).message ?? 'Download failed');
+    }
+    return response as unknown as PiperDownloadResult;
+  }
+
+  async listVoiceSamples(): Promise<VoiceSampleInfo[]> {
+    if (!this.transport) throw new Error('Not initialized');
+    const response = await this.transport.send({ type: 'list_voice_samples' });
+    if (response.type === 'error') {
+      throw new Error((response as unknown as { message: string }).message ?? 'Failed to list samples');
+    }
+    return (response as unknown as { samples: VoiceSampleInfo[] }).samples ?? [];
+  }
+
+  async uploadVoiceSample(name: string, dataBase64: string): Promise<VoiceSampleResult> {
+    if (!this.transport) throw new Error('Not initialized');
+    const response = await this.transport.send({
+      type: 'upload_voice_sample',
+      name,
+      data_base64: dataBase64,
+    });
+    if (response.type === 'error') {
+      throw new Error((response as unknown as { message: string }).message ?? 'Upload failed');
+    }
+    return response as unknown as VoiceSampleResult;
+  }
+
+  async deleteVoiceSample(name: string): Promise<VoiceSampleResult> {
+    if (!this.transport) throw new Error('Not initialized');
+    const response = await this.transport.send({ type: 'delete_voice_sample', name });
+    if (response.type === 'error') {
+      throw new Error((response as unknown as { message: string }).message ?? 'Delete failed');
+    }
+    return response as unknown as VoiceSampleResult;
+  }
+
+  async manageServer(engine: string, action: 'start' | 'stop' | 'restart'): Promise<ServerManageResult> {
+    if (!this.transport) throw new Error('Not initialized');
+    const response = await this.transport.send({ type: 'manage_server', engine, action });
+    if (response.type === 'error') {
+      throw new Error((response as unknown as { message: string }).message ?? 'Server management failed');
+    }
+    return response as unknown as ServerManageResult;
+  }
+
+  async getServerStats(): Promise<ServerProcessStats[]> {
+    if (!this.transport) throw new Error('Not initialized');
+    const response = await this.transport.send({ type: 'get_server_stats' });
+    if (response.type === 'error') {
+      throw new Error((response as unknown as { message: string }).message ?? 'Failed to get server stats');
+    }
+    return (response as unknown as { servers: ServerProcessStats[] }).servers ?? [];
   }
 
   async synthesize(text: string, options: SynthesisOptions): Promise<RawSynthesisResult> {
@@ -115,7 +224,7 @@ export class NativeBridgeEngine implements EngineAdapter {
     this.collectedChunks.set(id, []);
     this.collectedBoundaries.set(id, []);
 
-    await this.transport.send({
+    const response = await this.transport.send({
       type: 'synthesize',
       id,
       text,
@@ -123,7 +232,15 @@ export class NativeBridgeEngine implements EngineAdapter {
       rate: options.rate ?? 1.0,
       pitch: options.pitch ?? 1.0,
       volume: options.volume ?? 1.0,
+      alignment: options.alignment,
     });
+
+    if (response.type === 'error') {
+      this.collectedChunks.delete(id);
+      this.collectedBoundaries.delete(id);
+      const errMsg = (response as unknown as { message: string }).message ?? 'Synthesis failed';
+      throw new Error(errMsg);
+    }
 
     const chunks = this.collectedChunks.get(id) ?? [];
     const boundaries = this.collectedBoundaries.get(id) ?? [];
@@ -150,6 +267,18 @@ export class NativeBridgeEngine implements EngineAdapter {
       charLength: b.char_length,
       startTimeMs: b.start_time_ms,
       endTimeMs: b.end_time_ms,
+      confidence: b.confidence,
+      phonemes: b.phonemes?.map(p => ({
+        phoneme: p.phoneme,
+        startTimeMs: p.start_time_ms,
+        endTimeMs: p.end_time_ms,
+      })),
+      syllables: b.syllables?.map(s => ({
+        text: s.text,
+        charOffset: s.char_offset,
+        startTimeMs: s.start_time_ms,
+        endTimeMs: s.end_time_ms,
+      })),
     }));
 
     const totalDurationMs = chunks.length > 0

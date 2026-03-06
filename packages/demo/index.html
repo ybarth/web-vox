@@ -11,14 +11,40 @@
     <header>
       <h1>WebVox</h1>
       <p class="subtitle">OS-level text-to-speech with audio capture</p>
+      <div id="system-info-bar" class="system-info-bar" hidden></div>
+      <button type="button" id="server-dashboard-btn" class="server-dashboard-btn" title="Server Dashboard">Servers</button>
     </header>
 
     <main>
       <section class="card">
-        <label for="voice-select">Voice</label>
-        <select id="voice-select" disabled>
-          <option value="">Loading voices...</option>
-        </select>
+        <label for="voice-search">Voice</label>
+        <div class="voice-picker">
+          <div class="voice-search-row">
+            <input type="text" id="voice-search" placeholder="Search voices..." autocomplete="off" />
+            <button type="button" id="refresh-voices-btn" class="icon-btn" title="Refresh voices from OS">
+              <span class="refresh-icon">&#8635;</span>
+            </button>
+            <button type="button" id="show-favorites-btn" class="icon-btn" title="Show favorites only">
+              <span class="star-icon">&#9734;</span>
+            </button>
+          </div>
+          <div class="voice-filter-row">
+            <select id="filter-language">
+              <option value="">All Languages</option>
+            </select>
+            <select id="filter-engine">
+              <option value="">All Engines</option>
+            </select>
+          </div>
+          <div id="voice-list" class="voice-list">
+            <div class="voice-list-loading">Loading voices...</div>
+          </div>
+          <div class="voice-picker-actions">
+            <div id="voice-selected-display" class="voice-selected-display">No voice selected</div>
+            <button type="button" id="voice-sample-btn" class="voice-sample-btn" title="Record or upload a voice sample for cloning">Voice Cloning</button>
+            <button type="button" id="piper-download-btn" class="piper-download-btn" title="Download Piper neural voices">+ Piper Voices</button>
+          </div>
+        </div>
       </section>
 
       <section class="card">
@@ -57,6 +83,16 @@
             <option value="m4a">M4A</option>
           </select>
         </div>
+        <div class="format-group">
+          <label for="alignment-select">Alignment</label>
+          <select id="alignment-select">
+            <option value="word" selected>Word</option>
+            <option value="word+syllable">Word + Syllable</option>
+            <option value="word+phoneme">Word + Phoneme</option>
+            <option value="full">Full</option>
+            <option value="none">None</option>
+          </select>
+        </div>
       </section>
 
       <section class="card actions">
@@ -86,6 +122,128 @@
         <div id="log-panel"></div>
       </section>
     </main>
+  </div>
+
+  <!-- Voice context menu (right-click) -->
+  <div id="voice-context-menu" class="context-menu" hidden>
+    <div class="context-menu-content">
+      <div class="context-menu-header" id="context-menu-header">Voice Details</div>
+      <div class="context-menu-body" id="context-menu-body"></div>
+      <div class="context-menu-actions">
+        <button type="button" id="context-menu-validate" class="context-menu-btn">Validate Voice</button>
+        <button type="button" id="context-menu-close" class="context-menu-btn secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Error dialog modal -->
+  <div id="error-dialog" class="modal-overlay" hidden>
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-icon">&#9888;</span>
+        <h2 id="error-dialog-title">Voice Error</h2>
+      </div>
+      <div class="modal-body" id="error-dialog-body"></div>
+      <div class="modal-footer">
+        <button type="button" id="error-dialog-close" class="modal-btn">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Piper voice download modal -->
+  <div id="piper-modal" class="modal-overlay" hidden>
+    <div class="modal piper-modal">
+      <div class="modal-header">
+        <h2>Download Piper Voices</h2>
+      </div>
+      <div class="piper-toolbar">
+        <input type="text" id="piper-search" placeholder="Search voices..." autocomplete="off" />
+        <select id="piper-lang-filter">
+          <option value="">All Languages</option>
+        </select>
+        <select id="piper-quality-filter">
+          <option value="">All Qualities</option>
+        </select>
+      </div>
+      <div class="piper-catalog-list" id="piper-catalog-list">
+        <div class="piper-loading">Loading catalog...</div>
+      </div>
+      <div class="modal-footer">
+        <span id="piper-status" class="piper-status"></span>
+        <button type="button" id="piper-modal-close" class="modal-btn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Voice sample / cloning modal -->
+  <div id="sample-modal" class="modal-overlay" hidden>
+    <div class="modal sample-modal">
+      <div class="modal-header">
+        <h2>Voice Cloning</h2>
+      </div>
+      <div class="sample-modal-body">
+        <p class="sample-description">Record or upload a voice sample for voice cloning. Best results with 5-15 seconds of clear speech. Samples are shared across all cloning engines.</p>
+
+        <div class="sample-engine-section">
+          <label for="clone-engine-select">Cloning Engine:</label>
+          <select id="clone-engine-select" class="clone-engine-select">
+            <option value="chatterbox">Chatterbox</option>
+            <option value="coqui-xtts">Coqui XTTS v2</option>
+            <option value="qwen-clone">Qwen3-TTS</option>
+          </select>
+        </div>
+
+        <div class="sample-record-section">
+          <h3>Record Sample</h3>
+          <div class="sample-record-controls">
+            <input type="text" id="sample-name-input" placeholder="Sample name..." value="my-voice" />
+            <button type="button" id="sample-record-btn" class="sample-record-btn">Record</button>
+            <button type="button" id="sample-stop-btn" class="sample-stop-btn" disabled>Stop</button>
+          </div>
+          <div id="sample-record-status" class="sample-record-status"></div>
+          <div id="sample-preview-section" class="sample-preview-section" hidden>
+            <audio id="sample-preview-player" controls></audio>
+            <button type="button" id="sample-save-btn" class="sample-save-btn">Save Sample</button>
+          </div>
+        </div>
+
+        <div class="sample-upload-section">
+          <h3>Upload Audio File</h3>
+          <div class="sample-upload-controls">
+            <input type="file" id="sample-file-input" accept="audio/*" />
+            <button type="button" id="sample-upload-btn" class="sample-upload-btn" disabled>Upload</button>
+          </div>
+        </div>
+
+        <div class="sample-list-section">
+          <h3>Saved Samples</h3>
+          <div id="sample-list" class="sample-list">
+            <div class="sample-list-empty">No voice samples saved yet.</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <span id="sample-status" class="sample-status"></span>
+        <button type="button" id="sample-modal-close" class="modal-btn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Server Dashboard modal -->
+  <div id="server-dashboard" class="modal-overlay" hidden>
+    <div class="modal server-dashboard-modal">
+      <div class="modal-header">
+        <h2>Server Dashboard</h2>
+      </div>
+      <div class="server-dashboard-body" id="server-dashboard-body">
+        <div class="server-dashboard-loading">Probing servers...</div>
+      </div>
+      <div class="modal-footer">
+        <span id="server-dashboard-status" class="server-dashboard-status"></span>
+        <button type="button" id="server-dashboard-refresh" class="modal-btn secondary">Refresh</button>
+        <button type="button" id="server-dashboard-close" class="modal-btn">Close</button>
+      </div>
+    </div>
   </div>
 
   <script type="module" src="/src/main.ts"></script>

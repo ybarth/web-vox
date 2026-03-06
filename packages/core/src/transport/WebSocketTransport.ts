@@ -53,14 +53,27 @@ export class WebSocketTransport implements TransportAdapter {
           const msg: NativeResponse = JSON.parse(event.data as string);
           const msgId = msg.id as string | undefined;
 
+          // Terminal response types that resolve a pending request
+          const isTerminal = msg.type === 'synthesis_complete'
+            || msg.type === 'voice_list'
+            || msg.type === 'error'
+            || msg.type === 'system_info'
+            || msg.type === 'voice_validation'
+            || msg.type === 'piper_catalog'
+            || msg.type === 'piper_download_complete'
+            || msg.type === 'voice_samples'
+            || msg.type === 'voice_sample_result'
+            || msg.type === 'server_manage_result'
+            || msg.type === 'server_stats';
+
           if (msgId && this.pendingRequests.has(msgId)) {
-            const pending = this.pendingRequests.get(msgId)!;
-            if (msg.type === 'synthesis_complete' || msg.type === 'voice_list' || msg.type === 'error') {
+            if (isTerminal) {
+              const pending = this.pendingRequests.get(msgId)!;
               this.pendingRequests.delete(msgId);
               pending.resolve(msg);
             }
-          } else if (!msgId && (msg.type === 'voice_list' || msg.type === 'error')) {
-            // Responses without id (e.g. voice_list) — resolve the oldest pending request
+          } else if (!msgId && isTerminal) {
+            // Responses without id (e.g. voice_list, system_info) — resolve the oldest pending request
             for (const [id, pending] of this.pendingRequests) {
               this.pendingRequests.delete(id);
               pending.resolve(msg);

@@ -42,14 +42,18 @@ Web-vox-pro is a meta-TTS platform forked from web-vox. It transforms multiple o
 - `feat/meta-engine` branch created
 - Config files and directories created
 
-### Phase 1: Forced Alignment Layer - IN PROGRESS
+### Phase 1: Forced Alignment Layer - COMPLETE
 - `alignment_server.py` — Python server using stable-ts (Whisper) + pyphen for syllables
 - `alignment.rs` — Rust client (same ureq pattern as other engines)
 - Protocol extended: `WordBoundary` now has optional `confidence`, `phonemes`, `syllables`
 - `SynthesizeRequest` has `alignment` field: "none"|"word"|"word+syllable"|"word+phoneme"|"full"
 - `ws_server.rs` calls alignment after synthesis, before sonic time-stretch, with graceful fallback
 - All 9 engine files updated with new WordBoundary fields
-- **TODO:** TypeScript types update, Python dependency install, end-to-end testing
+- TypeScript types mirrored: `PhonemeTimestamp`, `SyllableTimestamp`, `AlignmentGranularity`, `NativePhonemeBoundary`, `NativeSyllableBoundary`; `WordTimestamp` and `NativeWordBoundary` extended; `SynthesisOptions` and `NativeRequest` have `alignment` field
+- `NativeBridgeEngine.synthesize()` passes alignment and maps confidence/phonemes/syllables
+- Demo UI has alignment granularity selector
+- Python deps installed in `tts-venv` (stable-ts, pyphen, librosa)
+- End-to-end tested: WS server + alignment server, synthesis with `word+syllable` alignment returns confidence scores and syllable data
 
 ### Phase 2: Quality Analysis & Correction Loop - PLANNED
 - Model council: Kimi Audio (Moonshot AI), UTMOS, Whisper, DNSMOS/NISQA, Crepe/librosa

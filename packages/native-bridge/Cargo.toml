@@ -16,6 +16,9 @@ thiserror = "2"
 tokio-tungstenite = "0.26"
 futures-util = "0.3"
 http = "1"
+hostname = "0.4"
+ureq = "3"
+sysinfo = "0.33"
 
 [build-dependencies]
 cc = "1"

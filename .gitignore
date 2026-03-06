@@ -8,3 +8,18 @@ target/
 *.swp
 *.swo
 .DS_Store
+
+# Test engine binaries and models
+test-engines/piper/
+test-engines/piper-venv/
+!test-engines/setup.sh
+
+# Piper/espeak binaries (local install)
+piper/
+
+# Python venvs
+tts-venv/
+qwen-tts-venv/
+
+# Voice samples (user-specific)
+packages/native-bridge/voice-samples/

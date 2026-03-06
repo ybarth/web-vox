@@ -1,0 +1,107 @@
+{
+  "scenarios": [
+    {
+      "id": "basic-word",
+      "name": "Basic Word Alignment",
+      "alignment": "word",
+      "text": "Hello world.",
+      "description": "Simplest case: two words. Verifies that word boundaries are returned with timing data.",
+      "expect": {
+        "minWords": 2,
+        "fieldsPresent": ["word", "start_time_ms", "end_time_ms", "char_offset", "char_length"],
+        "fieldsAbsent": ["syllables"],
+        "confidencePresent": true
+      }
+    },
+    {
+      "id": "syllable-split",
+      "name": "Word + Syllable Alignment",
+      "alignment": "word+syllable",
+      "text": "Beautiful butterfly.",
+      "description": "Multi-syllable words. Verifies syllable data is returned (beau-ti-ful, but-ter-fly).",
+      "expect": {
+        "minWords": 2,
+        "fieldsPresent": ["word", "start_time_ms", "end_time_ms", "confidence"],
+        "syllablesPresent": true,
+        "minSyllablesPerWord": 2
+      }
+    },
+    {
+      "id": "longer-passage",
+      "name": "Longer Passage Alignment",
+      "alignment": "word+syllable",
+      "text": "The quick brown fox jumps over the lazy dog. This sentence contains every letter of the alphabet.",
+      "description": "Longer text with two sentences. Verifies timing continuity and that all words are captured.",
+      "expect": {
+        "minWords": 15,
+        "timingMonotonic": true,
+        "confidencePresent": true,
+        "syllablesPresent": true
+      }
+    },
+    {
+      "id": "punctuation",
+      "name": "Punctuation & Numbers",
+      "alignment": "word",
+      "text": "On July 4th, 1776, independence was declared!",
+      "description": "Tests handling of numbers, ordinals, commas, and exclamation marks in alignment.",
+      "expect": {
+        "minWords": 5,
+        "confidencePresent": true,
+        "timingMonotonic": true
+      }
+    },
+    {
+      "id": "no-alignment",
+      "name": "No Alignment (Baseline)",
+      "alignment": "none",
+      "text": "Hello world.",
+      "description": "Alignment disabled. Engine-native boundaries only. No confidence or syllable data expected.",
+      "expect": {
+        "minWords": 0,
+        "confidencePresent": false,
+        "syllablesPresent": false
+      }
+    },
+    {
+      "id": "full-alignment",
+      "name": "Full Alignment",
+      "alignment": "full",
+      "text": "The extraordinary advancement of artificial intelligence represents a fundamental transformation in how humanity interacts with technology. From natural language processing to computer vision, these sophisticated algorithms are reshaping industries, revolutionizing healthcare diagnostics, and accelerating scientific discovery at an unprecedented pace. Nevertheless, important questions about responsibility, transparency, and the equitable distribution of benefits remain at the forefront of public discourse.",
+      "description": "Maximum granularity on a substantial passage. Should return word timing, confidence, and syllable breakdowns across multiple sentences with varied vocabulary.",
+      "expect": {
+        "minWords": 40,
+        "confidencePresent": true,
+        "syllablesPresent": true,
+        "timingMonotonic": true,
+        "minSyllablesPerWord": 3
+      }
+    },
+    {
+      "id": "single-word",
+      "name": "Single Word",
+      "alignment": "word+syllable",
+      "text": "Supercalifragilisticexpialidocious.",
+      "description": "One very long word. Tests syllable splitting on a complex word.",
+      "expect": {
+        "minWords": 1,
+        "syllablesPresent": true,
+        "minSyllablesPerWord": 5
+      }
+    },
+    {
+      "id": "speed-variation",
+      "name": "Speed Variation",
+      "alignment": "word+syllable",
+      "text": "The development of reusable rocket technology has fundamentally transformed the economics of space exploration. Companies can now launch satellites, resupply the International Space Station, and deploy constellation networks at a fraction of the previous cost. This dramatic reduction in launch prices has opened the door for smaller nations and private enterprises to participate in what was once the exclusive domain of superpowers.",
+      "rate": 2.0,
+      "rateAdjustable": true,
+      "description": "Synthesis at variable speed. Use the slider to test different rates (0.5x to 4x). Timestamps should scale proportionally with speed.",
+      "expect": {
+        "minWords": 40,
+        "confidencePresent": true,
+        "timingMonotonic": true
+      }
+    }
+  ]
+}
