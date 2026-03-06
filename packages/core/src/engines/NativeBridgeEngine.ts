@@ -6,7 +6,9 @@ import type {
   NativeAudioChunk,
   NativeWordBoundary,
   NativeVoiceDescriptor,
+  NativeQualityScore,
   WordTimestamp,
+  QualityScore,
   SystemInfo,
   VoiceValidation,
   PiperCatalogVoice,
@@ -39,6 +41,7 @@ export class NativeBridgeEngine implements EngineAdapter {
   private voices: VoiceInfo[] = [];
   private collectedChunks = new Map<string, NativeAudioChunk[]>();
   private collectedBoundaries = new Map<string, NativeWordBoundary[]>();
+  private collectedQuality = new Map<string, NativeQualityScore>();
 
   constructor(private customTransport?: TransportAdapter) {}
 
@@ -96,6 +99,11 @@ export class NativeBridgeEngine implements EngineAdapter {
           const boundary = msg as unknown as NativeWordBoundary;
           if (!this.collectedBoundaries.has(id)) this.collectedBoundaries.set(id, []);
           this.collectedBoundaries.get(id)!.push(boundary);
+          break;
+        }
+        case 'quality_score': {
+          const qs = msg as unknown as NativeQualityScore;
+          this.collectedQuality.set(id, qs);
           break;
         }
       }
@@ -233,6 +241,8 @@ export class NativeBridgeEngine implements EngineAdapter {
       pitch: options.pitch ?? 1.0,
       volume: options.volume ?? 1.0,
       alignment: options.alignment,
+      analyze_quality: options.analyzeQuality,
+      quality_analyzers: options.qualityAnalyzers,
     });
 
     if (response.type === 'error') {
@@ -244,8 +254,10 @@ export class NativeBridgeEngine implements EngineAdapter {
 
     const chunks = this.collectedChunks.get(id) ?? [];
     const boundaries = this.collectedBoundaries.get(id) ?? [];
+    const nativeQuality = this.collectedQuality.get(id);
     this.collectedChunks.delete(id);
     this.collectedBoundaries.delete(id);
+    this.collectedQuality.delete(id);
 
     const sampleRate = chunks[0]?.sample_rate ?? 22050;
     const channels = chunks[0]?.channels ?? 1;
@@ -285,7 +297,31 @@ export class NativeBridgeEngine implements EngineAdapter {
       ? (samples.length / channels / sampleRate) * 1000
       : 0;
 
-    return { samples, sampleRate, channels, wordTimestamps, totalDurationMs };
+    let qualityScore: QualityScore | undefined;
+    if (nativeQuality) {
+      qualityScore = {
+        overallScore: nativeQuality.overall_score,
+        overallRating: nativeQuality.overall_rating,
+        asrConfidence: nativeQuality.asr_confidence,
+        asrWer: nativeQuality.asr_wer,
+        asrHypothesis: nativeQuality.asr_hypothesis,
+        mos: nativeQuality.mos,
+        mosRating: nativeQuality.mos_rating,
+        snrDb: nativeQuality.snr_db,
+        clipRatio: nativeQuality.clip_ratio,
+        silenceRatio: nativeQuality.silence_ratio,
+        f0MeanHz: nativeQuality.f0_mean_hz,
+        f0RangeHz: nativeQuality.f0_range_hz,
+        artifacts: nativeQuality.artifacts.map(a => ({
+          type: a.type,
+          severity: a.severity as 'low' | 'medium' | 'high',
+          detail: a.detail,
+        })),
+        recommendations: nativeQuality.recommendations,
+      };
+    }
+
+    return { samples, sampleRate, channels, wordTimestamps, totalDurationMs, qualityScore };
   }
 
   cancel(): void {
@@ -294,6 +330,7 @@ export class NativeBridgeEngine implements EngineAdapter {
     }
     this.collectedChunks.clear();
     this.collectedBoundaries.clear();
+    this.collectedQuality.clear();
   }
 
   dispose(): void {

@@ -168,6 +168,7 @@ export class WebVox {
         prosodyHints,
       },
       rawPcm: raw.samples.length > 0 ? raw.samples : undefined,
+      qualityScore: raw.qualityScore,
     };
   }
 

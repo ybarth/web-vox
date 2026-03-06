@@ -76,6 +76,12 @@ pub struct SynthesizeRequest {
     /// Alignment granularity: "none", "word", "word+syllable", "word+phoneme", "full"
     #[serde(default = "default_alignment")]
     pub alignment: String,
+    /// Whether to run quality analysis after synthesis.
+    #[serde(default)]
+    pub analyze_quality: bool,
+    /// Which quality analyzers to run: "asr", "mos", "prosody", "signal". Empty = all.
+    #[serde(default)]
+    pub quality_analyzers: Vec<String>,
 }
 
 fn default_alignment() -> String {
@@ -128,6 +134,8 @@ pub enum HostMessage {
     ServerManageResult(ServerManageResult),
     #[serde(rename = "server_stats")]
     ServerStats(ServerStatsResponse),
+    #[serde(rename = "quality_score")]
+    QualityScore(QualityScore),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -179,6 +187,45 @@ pub struct SyllableBoundary {
 pub struct SynthesisComplete {
     pub id: String,
     pub total_duration_ms: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QualityScore {
+    pub id: String,
+    pub overall_score: f32,
+    pub overall_rating: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub asr_confidence: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub asr_wer: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub asr_hypothesis: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mos: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mos_rating: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub snr_db: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub clip_ratio: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub silence_ratio: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub f0_mean_hz: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub f0_range_hz: Option<f32>,
+    #[serde(default)]
+    pub artifacts: Vec<QualityArtifact>,
+    #[serde(default)]
+    pub recommendations: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QualityArtifact {
+    #[serde(rename = "type")]
+    pub artifact_type: String,
+    pub severity: String,
+    pub detail: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -345,6 +392,8 @@ mod tests {
             pitch: 1.0,
             volume: 1.0,
             alignment: "word".to_string(),
+            analyze_quality: false,
+            quality_analyzers: vec![],
         });
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"synthesize\""));

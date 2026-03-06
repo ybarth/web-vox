@@ -58,6 +58,7 @@ const SERVER_DEFS: &[ServerDef] = &[
     ServerDef { engine: "coqui-xtts", name: "Coqui XTTS v2", port: 21745, python: "python3.11", script: "coqui_xtts_server.py", extra_args: &["--lazy"] },
     ServerDef { engine: "qwen-clone", name: "Qwen3-TTS Clone", port: 21746, python: "python3.12", script: "qwen_tts_clone_server.py", extra_args: &["--lazy"] },
     ServerDef { engine: "alignment", name: "Forced Alignment", port: 21747, python: "python3.11", script: "alignment_server.py", extra_args: &["--preload"] },
+    ServerDef { engine: "quality", name: "Quality Analysis", port: 21748, python: "python3.11", script: "quality_server.py", extra_args: &[] },
 ];
 
 struct ManagedProcess {
@@ -806,6 +807,64 @@ fn handle_synthesize(req: &SynthesizeRequest) -> Vec<String> {
             } else {
                 output.word_boundaries.clone()
             };
+
+            // ── Quality analysis ─────────────────────────────────────────
+            // Run quality analysis on the raw (pre-stretched) audio if requested.
+            if req.analyze_quality {
+                let quality_client =
+                    web_vox_native_bridge::tts::quality::QualityClient::new(None);
+                let analyzers: Option<Vec<&str>> = if req.quality_analyzers.is_empty() {
+                    None
+                } else {
+                    Some(req.quality_analyzers.iter().map(|s| s.as_str()).collect())
+                };
+                match quality_client.analyze(
+                    &output.samples,
+                    output.sample_rate,
+                    output.channels,
+                    &req.text,
+                    &id,
+                    analyzers.as_deref(),
+                ) {
+                    Ok(analysis) => {
+                        let qs = QualityScore {
+                            id: id.clone(),
+                            overall_score: analysis.overall.score,
+                            overall_rating: analysis.overall.rating.clone(),
+                            asr_confidence: analysis.asr.as_ref().and_then(|a| a.confidence),
+                            asr_wer: analysis.asr.as_ref().and_then(|a| a.wer),
+                            asr_hypothesis: analysis.asr.as_ref().and_then(|a| a.hypothesis.clone()),
+                            mos: analysis.mos.as_ref().and_then(|m| m.mos),
+                            mos_rating: analysis.mos.as_ref().and_then(|m| m.rating.clone()),
+                            snr_db: analysis.signal.as_ref().map(|s| s.snr_db),
+                            clip_ratio: analysis.signal.as_ref().map(|s| s.clip_ratio),
+                            silence_ratio: analysis.signal.as_ref().map(|s| s.silence_ratio),
+                            f0_mean_hz: analysis.prosody.as_ref()
+                                .and_then(|p| p.f0.as_ref())
+                                .and_then(|f| f.mean_hz),
+                            f0_range_hz: analysis.prosody.as_ref()
+                                .and_then(|p| p.f0.as_ref())
+                                .and_then(|f| f.range_hz),
+                            artifacts: analysis.signal.as_ref()
+                                .map(|s| s.artifacts.iter().map(|a| QualityArtifact {
+                                    artifact_type: a.artifact_type.clone(),
+                                    severity: a.severity.clone(),
+                                    detail: a.detail.clone(),
+                                }).collect())
+                                .unwrap_or_default(),
+                            recommendations: analysis.recommendations,
+                        };
+                        let msg = HostMessage::QualityScore(qs);
+                        responses.push(serde_json::to_string(&msg).unwrap());
+                    }
+                    Err(e) => {
+                        println!(
+                            "  [quality] Analysis unavailable ({}), skipping",
+                            e
+                        );
+                    }
+                }
+            }
 
             // ── Sonic time-stretching ────────────────────────────────────
             let speed = req.rate;

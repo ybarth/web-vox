@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Web-Vox Pro — Quality Analysis Workbench</title>
+<style>
+  :root {
+    --bg: #0e1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-dim: #8b949e;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --red: #f85149;
+    --orange: #d29922;
+    --purple: #bc8cff;
+    --cyan: #56d4dd;
+    --pink: #f778ba;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    background: var(--bg); color: var(--text);
+    line-height: 1.5; padding: 0;
+  }
+
+  /* -- Layout -- */
+  .app { display: flex; flex-direction: column; min-height: 100vh; }
+  .main-panel { flex: 1; overflow-y: auto; padding: 24px 32px; max-width: 1400px; margin: 0 auto; width: 100%; }
+
+  .main-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+  .main-header h1 { font-size: 22px; font-weight: 700; }
+  .connection-badge {
+    font-size: 12px; padding: 4px 12px; border-radius: 12px; font-weight: 600;
+  }
+  .connection-badge.online { background: rgba(63,185,80,0.15); color: var(--green); }
+  .connection-badge.offline { background: rgba(248,81,73,0.15); color: var(--red); }
+
+  /* -- Server Management -- */
+  .server-mgmt {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 20px; margin-bottom: 20px;
+  }
+  .server-mgmt h3 { font-size: 15px; margin-bottom: 14px; display: flex; align-items: center; gap: 10px; cursor: pointer; }
+  .ctrl-badge {
+    font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 600;
+  }
+  .ctrl-badge.online { background: rgba(63,185,80,0.15); color: var(--green); }
+  .ctrl-badge.offline { background: rgba(248,81,73,0.15); color: var(--red); }
+
+  .srv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+  .srv-card {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 14px;
+  }
+  .srv-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .srv-name { font-size: 13px; font-weight: 600; }
+  .srv-status-dot {
+    width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px;
+  }
+  .srv-status-dot.on { background: var(--green); box-shadow: 0 0 6px rgba(63,185,80,0.5); }
+  .srv-status-dot.off { background: var(--red); }
+  .srv-status-dot.starting { background: var(--orange); animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+
+  .srv-meta { font-size: 11px; color: var(--text-dim); margin-bottom: 8px; }
+  .srv-meta span { margin-right: 10px; }
+  .srv-btns { display: flex; gap: 4px; }
+  .srv-btn {
+    padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text); font-size: 11px; cursor: pointer;
+  }
+  .srv-btn:hover { background: rgba(255,255,255,0.06); }
+  .srv-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .srv-btn.start { border-color: var(--green); color: var(--green); }
+  .srv-btn.stop { border-color: var(--red); color: var(--red); }
+
+  /* -- Synth Card -- */
+  .synth-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 24px; margin-bottom: 20px;
+  }
+  .synth-card h3 { font-size: 16px; margin-bottom: 16px; }
+
+  .inline-select, .inline-input {
+    padding: 7px 12px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); font-size: 13px;
+  }
+  .input-text {
+    width: 100%; padding: 12px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); font-size: 14px; font-family: inherit;
+    resize: vertical; min-height: 60px; margin: 8px 0;
+  }
+  .controls-row { display: flex; gap: 10px; margin: 10px 0; flex-wrap: wrap; align-items: center; }
+
+  .btn {
+    padding: 8px 20px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text); font-size: 13px;
+    cursor: pointer; font-weight: 500;
+  }
+  .btn:hover { background: rgba(255,255,255,0.06); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn.primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; }
+  .btn.primary:hover { opacity: 0.9; }
+  .btn.run-all { background: var(--purple); color: #000; border-color: var(--purple); font-weight: 600; }
+
+  .spinner {
+    display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite;
+    vertical-align: middle; margin-right: 4px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  audio { width: 100%; margin: 6px 0; height: 32px; }
+
+  /* -- Voice Picker (compact) -- */
+  .voice-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+
+  /* -- Quality Results -- */
+  .quality-results {
+    margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+  }
+  @media (max-width: 800px) { .quality-results { grid-template-columns: 1fr; } }
+
+  .q-panel {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 16px;
+  }
+  .q-panel h4 { font-size: 13px; font-weight: 600; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .q-panel.overall { grid-column: 1 / -1; }
+
+  .overall-row { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+  .overall-badge {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    border: 3px solid; border-radius: 14px; padding: 12px 24px; min-width: 90px;
+  }
+  .overall-badge .score { font-size: 2rem; font-weight: 700; }
+  .overall-badge .rating { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); }
+
+  .overall-metrics { display: flex; gap: 12px; flex-wrap: wrap; }
+  .o-metric {
+    background: var(--surface); border-radius: 6px; padding: 8px 14px; text-align: center;
+  }
+  .o-metric .val { font-size: 1.1rem; font-weight: 600; font-family: 'SF Mono', monospace; }
+  .o-metric .lbl { font-size: 10px; color: var(--text-dim); text-transform: uppercase; }
+
+  .q-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid rgba(48,54,61,0.4); font-size: 13px; }
+  .q-row:last-child { border-bottom: none; }
+  .q-row .q-label { color: var(--text-dim); }
+  .q-row .q-value { font-family: 'SF Mono', monospace; font-weight: 500; }
+
+  .q-unavailable { color: var(--text-dim); font-style: italic; font-size: 13px; }
+
+  .artifact-chip {
+    display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 4px; margin: 2px 2px;
+  }
+  .artifact-chip.high { background: rgba(248,81,73,0.15); color: var(--red); }
+  .artifact-chip.medium { background: rgba(210,153,34,0.15); color: var(--orange); }
+  .artifact-chip.low { background: rgba(63,185,80,0.15); color: var(--green); }
+
+  .recommendation-item { font-size: 13px; color: var(--text-dim); padding: 4px 0; border-bottom: 1px solid rgba(48,54,61,0.3); }
+  .recommendation-item:last-child { border-bottom: none; }
+
+  /* -- Scenario Test Cards -- */
+  .scenarios-section {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 24px; margin-bottom: 20px;
+  }
+  .scenarios-section h3 { font-size: 16px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px; }
+
+  .scenario-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+  .scenario-card {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 16px;
+  }
+  .scenario-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .scenario-name { font-size: 14px; font-weight: 600; }
+  .scenario-badge {
+    font-size: 11px; padding: 2px 10px; border-radius: 10px; font-weight: 600;
+  }
+  .scenario-badge.pending { background: rgba(139,148,158,0.15); color: var(--text-dim); }
+  .scenario-badge.running { background: rgba(210,153,34,0.15); color: var(--orange); }
+  .scenario-badge.pass { background: rgba(63,185,80,0.15); color: var(--green); }
+  .scenario-badge.fail { background: rgba(248,81,73,0.15); color: var(--red); }
+  .scenario-badge.error { background: rgba(248,81,73,0.15); color: var(--red); }
+
+  .scenario-desc { font-size: 12px; color: var(--text-dim); margin-bottom: 6px; }
+  .scenario-text { font-size: 12px; color: var(--accent); font-family: 'SF Mono', monospace; margin-bottom: 6px; max-height: 40px; overflow: hidden; text-overflow: ellipsis; }
+  .scenario-analyzers { font-size: 11px; color: var(--purple); margin-bottom: 8px; }
+  .scenario-result { font-size: 12px; margin-top: 8px; }
+  .scenario-result .checks { font-size: 11px; color: var(--text-dim); }
+  .check-pass { color: var(--green); }
+  .check-fail { color: var(--red); }
+
+  .scenario-details { margin-top: 8px; display: none; }
+  .scenario-details.open { display: block; }
+  .scenario-toggle { font-size: 11px; color: var(--accent); background: none; border: none; cursor: pointer; padding: 0; }
+  .scenario-toggle:hover { text-decoration: underline; }
+
+  /* -- Log -- */
+  .log-section {
+    margin-top: 16px; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 12px; max-height: 200px; overflow-y: auto;
+    font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11px; color: var(--text-dim);
+  }
+  .log-line { padding: 1px 0; }
+  .log-line.error { color: var(--red); }
+  .log-line.success { color: var(--green); }
+  .log-line.info { color: var(--cyan); }
+
+  /* -- Comparison Table -- */
+  .compare-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 12px; }
+  .compare-table th {
+    text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border);
+    color: var(--text-dim); font-weight: 600; font-size: 11px; text-transform: uppercase;
+  }
+  .compare-table td {
+    padding: 5px 10px; border-bottom: 1px solid rgba(48,54,61,0.4);
+    font-family: 'SF Mono', monospace;
+  }
+
+  .rating-colors { font-weight: 600; }
+  .rating-colors.excellent { color: var(--green); }
+  .rating-colors.good { color: #84cc16; }
+  .rating-colors.fair { color: var(--orange); }
+  .rating-colors.poor { color: #f97316; }
+  .rating-colors.bad { color: var(--red); }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="main-panel" id="mainPanel">
+    <div class="main-header">
+      <h1>Web-Vox Pro — Quality Analysis Workbench</h1>
+      <span class="connection-badge offline" id="connBadge">Disconnected</span>
+    </div>
+
+    <!-- Server Management (collapsed by default) -->
+    <div class="server-mgmt" id="serverMgmt">
+      <h3 onclick="document.getElementById('srvGrid').style.display=document.getElementById('srvGrid').style.display==='none'?'grid':'none'">
+        Server Control
+        <span class="ctrl-badge offline" id="ctrlBadge">Controller offline</span>
+        <span style="font-size:11px; font-weight:400; color:var(--text-dim); margin-left:auto">click to toggle</span>
+      </h3>
+      <div class="srv-grid" id="srvGrid" style="display:none"></div>
+    </div>
+
+    <!-- Manual Synthesis + Quality -->
+    <div class="synth-card">
+      <h3>Synthesize + Analyze</h3>
+
+      <div class="voice-row">
+        <label style="font-size:13px; font-weight:500">Voice:</label>
+        <select class="inline-select" id="voiceSelect"><option value="">Loading...</option></select>
+        <label style="font-size:13px; font-weight:500; margin-left:8px">Analyzers:</label>
+        <label style="font-size:12px"><input type="checkbox" id="chkAsr" checked> ASR</label>
+        <label style="font-size:12px"><input type="checkbox" id="chkMos" checked> MOS</label>
+        <label style="font-size:12px"><input type="checkbox" id="chkProsody" checked> Prosody</label>
+        <label style="font-size:12px"><input type="checkbox" id="chkSignal" checked> Signal</label>
+      </div>
+
+      <textarea class="input-text" id="inputText" placeholder="Enter text to synthesize...">The quick brown fox jumps over the lazy dog.</textarea>
+
+      <div class="controls-row">
+        <button class="btn primary" id="runBtn" onclick="runManualSynth()">Synthesize + Analyze</button>
+        <button class="btn" id="playBtn" disabled onclick="playAudio()">Play</button>
+      </div>
+
+      <audio id="audioPlayer" controls style="display:none"></audio>
+      <div id="qualityResults"></div>
+      <div class="log-section" id="logPanel"></div>
+    </div>
+
+    <!-- Scenario Tests -->
+    <div class="scenarios-section">
+      <h3>
+        Test Scenarios
+        <button class="btn run-all" id="runAllBtn" onclick="runAllScenarios()">Run All</button>
+        <span id="scenarioSummary" style="font-size:12px; color:var(--text-dim); margin-left:auto"></span>
+      </h3>
+      <div class="scenario-grid" id="scenarioGrid">Loading scenarios...</div>
+    </div>
+
+    <!-- Cross-Engine Comparison -->
+    <div class="synth-card" id="compareSection" style="display:none">
+      <h3>Cross-Engine Comparison</h3>
+      <div id="compareResults"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const CTRL_URL = 'http://127.0.0.1:8098';
+const QUALITY_URL = 'http://127.0.0.1:21748';
+
+let ws = null;
+let voices = [];
+let controllerOnline = false;
+let srvStatusCache = {};
+let knownServerKeys = [];
+let scenarios = [];
+let scenarioResults = {};
+let statusPollTimer = null;
+
+// ── Rating helpers ─────────────────────────────────────────
+
+const RATING_COLORS = { excellent: '#3fb950', good: '#84cc16', fair: '#d29922', poor: '#f97316', bad: '#f85149', unknown: '#8b949e' };
+
+function ratingColor(rating) { return RATING_COLORS[rating] || RATING_COLORS.unknown; }
+
+// ── Init ───────────────────────────────────────────────────
+
+async function init() {
+  await pollControllerStatus();
+  startStatusPolling();
+  try {
+    await connectWs();
+    voices = await listVoices();
+    document.getElementById('connBadge').className = 'connection-badge online';
+    document.getElementById('connBadge').textContent = `Connected (${voices.length} voices)`;
+    populateVoiceSelect();
+  } catch (e) {
+    log('error', `WS connect failed: ${e.message}`);
+  }
+  await loadScenarios();
+}
+
+// ── Server Control ─────────────────────────────────────────
+
+function renderServerCards(data) {
+  const grid = document.getElementById('srvGrid');
+  const keys = Object.keys(data || {});
+  if (!keys.length) {
+    grid.innerHTML = '<p style="color:var(--text-dim);font-size:13px;grid-column:1/-1">Controller not reachable</p>';
+    return;
+  }
+  // Only re-render on key change
+  if (keys.join(',') === knownServerKeys.join(',')) {
+    // Just update statuses
+    for (const [key, status] of Object.entries(data)) {
+      srvStatusCache[key] = status;
+      updateSrvCard(key, status);
+    }
+    return;
+  }
+  knownServerKeys = keys;
+  grid.innerHTML = keys.map(key => {
+    const s = data[key];
+    return `<div class="srv-card" id="srv-card-${key}">
+      <div class="srv-card-header">
+        <span class="srv-name"><span class="srv-status-dot off" id="srv-dot-${key}"></span>${s.name}</span>
+        <span style="font-size:11px;color:var(--text-dim)">:${s.port}</span>
+      </div>
+      <div class="srv-meta" id="srv-meta-${key}"><span>PID: —</span></div>
+      <div class="srv-btns">
+        <button class="srv-btn start" id="srv-start-${key}" onclick="srvAction('${key}','start')">Start</button>
+        <button class="srv-btn stop" id="srv-stop-${key}" onclick="srvAction('${key}','stop')" disabled>Stop</button>
+      </div>
+    </div>`;
+  }).join('');
+  for (const [key, status] of Object.entries(data)) {
+    srvStatusCache[key] = status;
+    updateSrvCard(key, status);
+  }
+}
+
+function updateSrvCard(key, s) {
+  const dot = document.getElementById(`srv-dot-${key}`);
+  if (dot) dot.className = `srv-status-dot ${s.running ? 'on' : 'off'}`;
+  const meta = document.getElementById(`srv-meta-${key}`);
+  if (meta) meta.innerHTML = `<span>PID: ${s.pid||'—'}</span><span style="margin-left:10px">Up: ${s.running ? formatUptime(s.uptime_secs) : '—'}</span>`;
+  const startBtn = document.getElementById(`srv-start-${key}`);
+  const stopBtn = document.getElementById(`srv-stop-${key}`);
+  if (startBtn) startBtn.disabled = s.running || !controllerOnline;
+  if (stopBtn) stopBtn.disabled = !s.running || !controllerOnline;
+}
+
+function formatUptime(s) {
+  if (s < 60) return `${Math.floor(s)}s`;
+  if (s < 3600) return `${Math.floor(s/60)}m`;
+  return `${Math.floor(s/3600)}h ${Math.floor((s%3600)/60)}m`;
+}
+
+async function srvAction(key, action) {
+  if (!controllerOnline) return;
+  try {
+    await fetch(`${CTRL_URL}/${action}/${key}`, { method: 'POST' });
+  } catch {}
+  await pollControllerStatus();
+  // Refresh voices after engine start
+  setTimeout(async () => {
+    try {
+      if (!ws || ws.readyState !== WebSocket.OPEN) await connectWs();
+      voices = await listVoices();
+      document.getElementById('connBadge').className = 'connection-badge online';
+      document.getElementById('connBadge').textContent = `Connected (${voices.length} voices)`;
+      populateVoiceSelect();
+    } catch {}
+  }, 2000);
+}
+
+async function pollControllerStatus() {
+  try {
+    const r = await fetch(`${CTRL_URL}/status`);
+    const data = await r.json();
+    controllerOnline = true;
+    document.getElementById('ctrlBadge').className = 'ctrl-badge online';
+    document.getElementById('ctrlBadge').textContent = 'Controller online';
+    renderServerCards(data);
+  } catch {
+    controllerOnline = false;
+    document.getElementById('ctrlBadge').className = 'ctrl-badge offline';
+    document.getElementById('ctrlBadge').textContent = 'Controller offline';
+  }
+}
+
+function startStatusPolling() {
+  if (statusPollTimer) clearInterval(statusPollTimer);
+  statusPollTimer = setInterval(() => pollControllerStatus(), 5000);
+}
+
+// ── WebSocket ──────────────────────────────────────────────
+
+function connectWs() {
+  return new Promise((resolve, reject) => {
+    if (ws && ws.readyState === WebSocket.OPEN) { resolve(); return; }
+    try { ws = new WebSocket('ws://127.0.0.1:21740'); } catch (e) { reject(e); return; }
+    const timer = setTimeout(() => { ws.close(); reject(new Error('timeout')); }, 5000);
+    ws.onopen = () => { clearTimeout(timer); resolve(); };
+    ws.onerror = () => { clearTimeout(timer); reject(new Error('connection failed')); };
+    ws.onclose = () => {
+      document.getElementById('connBadge').className = 'connection-badge offline';
+      document.getElementById('connBadge').textContent = 'Disconnected';
+    };
+  });
+}
+
+function wsSendAndCollect(req) {
+  return new Promise((resolve, reject) => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) { reject(new Error('Not connected')); return; }
+    const boundaries = [];
+    const chunks = [];
+    let qualityScore = null;
+    const timer = setTimeout(() => { ws.onmessage = null; reject(new Error('Timeout (120s)')); }, 120000);
+
+    ws.onmessage = (ev) => {
+      const msg = JSON.parse(ev.data);
+      if (msg.id && msg.id !== req.id) return;
+      if (msg.type === 'word_boundary') boundaries.push(msg);
+      else if (msg.type === 'audio_chunk') chunks.push(msg);
+      else if (msg.type === 'quality_score') qualityScore = msg;
+      else if (msg.type === 'synthesis_complete') {
+        clearTimeout(timer);
+        ws.onmessage = null;
+        resolve({ complete: msg, boundaries, chunks, qualityScore });
+      } else if (msg.type === 'error') {
+        clearTimeout(timer);
+        ws.onmessage = null;
+        reject(new Error(msg.message || 'Synthesis error'));
+      }
+    };
+    ws.send(JSON.stringify(req));
+  });
+}
+
+function listVoices() {
+  return new Promise((resolve, reject) => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) { reject(new Error('Not connected')); return; }
+    const handler = ws.onmessage;
+    ws.onmessage = (ev) => {
+      const msg = JSON.parse(ev.data);
+      if (msg.type === 'voice_list') { ws.onmessage = handler; resolve(msg.voices || []); }
+    };
+    ws.send(JSON.stringify({ type: 'list_voices' }));
+    setTimeout(() => { ws.onmessage = handler; reject(new Error('Voice list timeout')); }, 10000);
+  });
+}
+
+function populateVoiceSelect() {
+  const sel = document.getElementById('voiceSelect');
+  sel.innerHTML = voices.map(v =>
+    `<option value="${v.id}">[${v.engine}] ${v.name}</option>`
+  ).join('');
+}
+
+// ── Manual Synth + Quality ─────────────────────────────────
+
+async function runManualSynth() {
+  const text = document.getElementById('inputText').value.trim();
+  if (!text) return;
+  const voiceId = document.getElementById('voiceSelect').value;
+  const analyzers = getSelectedAnalyzers();
+
+  const btn = document.getElementById('runBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Analyzing...';
+  log('info', `Synthesizing: voice=${voiceId}, analyzers=[${analyzers.join(',')||'all'}]`);
+
+  try {
+    if (!ws || ws.readyState !== WebSocket.OPEN) await connectWs();
+
+    const reqId = `q-${Date.now()}`;
+    const req = {
+      type: 'synthesize', id: reqId, text,
+      voice_id: voiceId, rate: 1.0, pitch: 1.0, volume: 1.0,
+      alignment: 'word',
+      analyze_quality: true,
+      quality_analyzers: analyzers,
+    };
+
+    const t0 = performance.now();
+    const result = await wsSendAndCollect(req);
+    const elapsed = ((performance.now() - t0) / 1000).toFixed(2);
+
+    log('success', `Done in ${elapsed}s — ${result.chunks.length} chunks, ${result.boundaries.length} boundaries`);
+
+    try { buildAudio(result.chunks); } catch (audioErr) {
+      log('error', `Audio build error: ${audioErr.message}`);
+      console.error('buildAudio error:', audioErr);
+    }
+
+    if (result.qualityScore) {
+      try {
+        renderQualityResults(result.qualityScore, document.getElementById('qualityResults'));
+      } catch (renderErr) {
+        log('error', `Render error: ${renderErr.message}`);
+        console.error('renderQualityResults error:', renderErr);
+      }
+      const qs = result.qualityScore;
+      log('success', `Quality: ${qs.overall_score?.toFixed(1) ?? '?'}/5.0 (${qs.overall_rating ?? '?'})`);
+    } else {
+      document.getElementById('qualityResults').innerHTML = '<p style="color:var(--text-dim);margin-top:12px">No quality score returned. Is the quality server running?</p>';
+      log('error', 'No quality_score message received');
+    }
+  } catch (e) {
+    log('error', `Failed: ${e.message}`);
+    console.error('Synth error:', e);
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = 'Synthesize + Analyze';
+}
+
+function getSelectedAnalyzers() {
+  const a = [];
+  if (document.getElementById('chkAsr').checked) a.push('asr');
+  if (document.getElementById('chkMos').checked) a.push('mos');
+  if (document.getElementById('chkProsody').checked) a.push('prosody');
+  if (document.getElementById('chkSignal').checked) a.push('signal');
+  return a.length === 4 ? [] : a;  // empty = all
+}
+
+// ── Audio ──────────────────────────────────────────────────
+
+let audioCtx = null;
+
+function buildAudio(chunks) {
+  console.log('[buildAudio] chunks:', chunks.length);
+  if (!chunks.length) { console.warn('[buildAudio] No chunks!'); return; }
+  if (!audioCtx) audioCtx = new AudioContext();
+  const sorted = [...chunks].sort((a,b) => a.sequence - b.sequence);
+  const sr = sorted[0].sample_rate || 22050;
+  const ch = sorted[0].channels || 1;
+  const pcmArrays = sorted.map(c => {
+    const bin = atob(c.data_base64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new Float32Array(bytes.buffer);
+  });
+  const total = pcmArrays.reduce((s,a) => s + a.length, 0);
+  const samples = new Float32Array(total);
+  let off = 0;
+  for (const a of pcmArrays) { samples.set(a, off); off += a.length; }
+
+  const wav = createWav(samples, sr, ch);
+  const blob = new Blob([wav], { type: 'audio/wav' });
+  const player = document.getElementById('audioPlayer');
+  player.src = URL.createObjectURL(blob);
+  player.style.display = 'block';
+  document.getElementById('playBtn').disabled = false;
+}
+
+function playAudio() { document.getElementById('audioPlayer').play(); }
+
+function createWav(samples, sr, ch) {
+  const bps = 16, bpsb = 2;
+  const dl = samples.length * bpsb;
+  const buf = new ArrayBuffer(44 + dl);
+  const v = new DataView(buf);
+  const ws = (o,s) => { for (let i=0;i<s.length;i++) v.setUint8(o+i,s.charCodeAt(i)); };
+  ws(0,'RIFF'); v.setUint32(4,36+dl,true); ws(8,'WAVE'); ws(12,'fmt ');
+  v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,ch,true);
+  v.setUint32(24,sr,true); v.setUint32(28,sr*ch*bpsb,true);
+  v.setUint16(32,ch*bpsb,true); v.setUint16(34,bps,true);
+  ws(36,'data'); v.setUint32(40,dl,true);
+  let o = 44;
+  for (let i=0;i<samples.length;i++) {
+    const s = Math.max(-1,Math.min(1,samples[i]));
+    v.setInt16(o, s<0?s*0x8000:s*0x7FFF, true); o+=2;
+  }
+  return buf;
+}
+
+// ── Quality Results Renderer ────────────────────────────────
+
+function renderQualityResults(qs, container) {
+  let html = '<div class="quality-results">';
+
+  // Overall panel
+  const color = ratingColor(qs.overall_rating);
+  html += `<div class="q-panel overall">
+    <h4 style="color:var(--accent)">Overall Quality</h4>
+    <div class="overall-row">
+      <div class="overall-badge" style="border-color:${color}">
+        <span class="score" style="color:${color}">${qs.overall_score.toFixed(1)}</span>
+        <span class="rating">${qs.overall_rating}</span>
+      </div>
+      <div class="overall-metrics">
+        ${qs.asr_confidence != null ? `<div class="o-metric"><div class="val">${(qs.asr_confidence*100).toFixed(0)}%</div><div class="lbl">ASR Conf</div></div>` : ''}
+        ${qs.asr_wer != null ? `<div class="o-metric"><div class="val">${(qs.asr_wer*100).toFixed(1)}%</div><div class="lbl">WER</div></div>` : ''}
+        ${qs.mos != null ? `<div class="o-metric"><div class="val">${qs.mos.toFixed(2)}</div><div class="lbl">MOS</div></div>` : ''}
+        ${qs.snr_db != null ? `<div class="o-metric"><div class="val">${qs.snr_db.toFixed(1)}</div><div class="lbl">SNR dB</div></div>` : ''}
+        ${qs.f0_mean_hz != null ? `<div class="o-metric"><div class="val">${qs.f0_mean_hz.toFixed(0)}</div><div class="lbl">F0 Hz</div></div>` : ''}
+      </div>
+    </div>
+  </div>`;
+
+  // ASR panel
+  if (qs.asr_confidence != null || qs.asr_hypothesis != null) {
+    html += `<div class="q-panel">
+      <h4 style="color:var(--cyan)">ASR Verification</h4>
+      ${qRow('Confidence', qs.asr_confidence != null ? (qs.asr_confidence*100).toFixed(1)+'%' : '—')}
+      ${qRow('Word Error Rate', qs.asr_wer != null ? (qs.asr_wer*100).toFixed(1)+'%' : '—')}
+      ${qs.asr_hypothesis ? qRow('Hypothesis', `<span style="font-size:11px;color:var(--text)">${escHtml(qs.asr_hypothesis)}</span>`) : ''}
+    </div>`;
+  }
+
+  // MOS panel
+  if (qs.mos != null) {
+    html += `<div class="q-panel">
+      <h4 style="color:var(--pink)">MOS Prediction</h4>
+      ${qRow('Score', `<span class="rating-colors ${qs.mos_rating||''}">${qs.mos.toFixed(2)} (${qs.mos_rating||'?'})</span>`)}
+    </div>`;
+  }
+
+  // Signal panel
+  if (qs.snr_db != null) {
+    html += `<div class="q-panel">
+      <h4 style="color:var(--green)">Signal Quality</h4>
+      ${qRow('SNR', qs.snr_db.toFixed(1)+' dB')}
+      ${qRow('Clip Ratio', qs.clip_ratio != null ? (qs.clip_ratio*100).toFixed(3)+'%' : '—')}
+      ${qRow('Silence Ratio', qs.silence_ratio != null ? (qs.silence_ratio*100).toFixed(1)+'%' : '—')}
+      ${qs.artifacts && qs.artifacts.length ? '<div style="margin-top:6px">' + qs.artifacts.map(a =>
+        `<span class="artifact-chip ${a.severity}">${a.type}: ${a.detail}</span>`
+      ).join('') + '</div>' : qRow('Artifacts', 'None')}
+    </div>`;
+  }
+
+  // Prosody panel
+  if (qs.f0_mean_hz != null) {
+    html += `<div class="q-panel">
+      <h4 style="color:var(--purple)">Prosody</h4>
+      ${qRow('F0 Mean', qs.f0_mean_hz.toFixed(0)+' Hz')}
+      ${qRow('F0 Range', qs.f0_range_hz != null ? qs.f0_range_hz.toFixed(0)+' Hz' : '—')}
+    </div>`;
+  }
+
+  // Recommendations
+  if (qs.recommendations && qs.recommendations.length) {
+    html += `<div class="q-panel" style="grid-column:1/-1">
+      <h4 style="color:var(--orange)">Recommendations</h4>
+      ${qs.recommendations.map(r => `<div class="recommendation-item">${escHtml(r)}</div>`).join('')}
+    </div>`;
+  }
+
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+function qRow(label, value) {
+  return `<div class="q-row"><span class="q-label">${label}</span><span class="q-value">${value}</span></div>`;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Scenarios ──────────────────────────────────────────────
+
+async function loadScenarios() {
+  try {
+    const r = await fetch('test-scenarios.json');
+    const data = await r.json();
+    scenarios = data.scenarios;
+    renderScenarioGrid();
+  } catch (e) {
+    document.getElementById('scenarioGrid').innerHTML = `<p style="color:var(--red)">Failed to load scenarios: ${e.message}</p>`;
+  }
+}
+
+function renderScenarioGrid() {
+  const grid = document.getElementById('scenarioGrid');
+  grid.innerHTML = scenarios.map((s, i) => {
+    const result = scenarioResults[s.id];
+    const status = result ? result.status : 'pending';
+    const analyzersText = s.analyzers && s.analyzers.length ? s.analyzers.join(', ') : 'all';
+    return `<div class="scenario-card" id="scenario-${s.id}">
+      <div class="scenario-header">
+        <span class="scenario-name">${s.name}</span>
+        <span class="scenario-badge ${status}" id="scenario-badge-${s.id}">${status}</span>
+      </div>
+      <div class="scenario-desc">${s.description}</div>
+      <div class="scenario-text">"${escHtml(s.text)}"</div>
+      <div class="scenario-analyzers">Analyzers: ${analyzersText}${s.multiVoice ? ' | Multi-voice' : ''}</div>
+      <div class="controls-row">
+        <button class="btn" onclick="runScenario('${s.id}')" id="scenario-run-${s.id}">Run</button>
+        <button class="scenario-toggle" onclick="toggleScenarioDetails('${s.id}')">Show details</button>
+      </div>
+      <div class="scenario-details" id="scenario-details-${s.id}">
+        <div id="scenario-result-${s.id}"></div>
+      </div>
+    </div>`;
+  }).join('');
+  updateScenarioSummary();
+}
+
+function toggleScenarioDetails(id) {
+  const el = document.getElementById(`scenario-details-${id}`);
+  el.classList.toggle('open');
+}
+
+async function runScenario(id) {
+  const scenario = scenarios.find(s => s.id === id);
+  if (!scenario) return;
+
+  const badge = document.getElementById(`scenario-badge-${id}`);
+  const runBtn = document.getElementById(`scenario-run-${id}`);
+  badge.className = 'scenario-badge running';
+  badge.textContent = 'running';
+  runBtn.disabled = true;
+
+  try {
+    if (!ws || ws.readyState !== WebSocket.OPEN) await connectWs();
+
+    const voiceId = document.getElementById('voiceSelect').value || voices[0]?.id || '';
+    const reqId = `sc-${id}-${Date.now()}`;
+
+    const req = {
+      type: 'synthesize', id: reqId, text: scenario.text,
+      voice_id: voiceId, rate: scenario.rate || 1.0, pitch: 1.0, volume: 1.0,
+      alignment: 'word',
+      analyze_quality: true,
+      quality_analyzers: scenario.analyzers || [],
+    };
+
+    const result = await wsSendAndCollect(req);
+    const qs = result.qualityScore;
+
+    if (!qs) {
+      scenarioResults[id] = { status: 'error', msg: 'No quality score returned', checks: [] };
+    } else {
+      const checks = evaluateExpectations(scenario.expect, qs);
+      const allPass = checks.every(c => c.pass);
+      scenarioResults[id] = { status: allPass ? 'pass' : 'fail', qs, checks };
+    }
+  } catch (e) {
+    scenarioResults[id] = { status: 'error', msg: e.message, checks: [] };
+  }
+
+  const r = scenarioResults[id];
+  badge.className = `scenario-badge ${r.status}`;
+  badge.textContent = r.status;
+  runBtn.disabled = false;
+
+  // Render details
+  const detailsEl = document.getElementById(`scenario-result-${id}`);
+  if (r.qs) {
+    renderQualityResults(r.qs, detailsEl);
+    if (r.checks.length) {
+      let checksHtml = '<div style="margin-top:8px"><strong style="font-size:12px">Checks:</strong><br>';
+      r.checks.forEach(c => {
+        const icon = c.pass ? '<span class="check-pass">PASS</span>' : '<span class="check-fail">FAIL</span>';
+        checksHtml += `<div style="font-size:11px;padding:2px 0">${icon} ${escHtml(c.desc)}</div>`;
+      });
+      checksHtml += '</div>';
+      detailsEl.innerHTML += checksHtml;
+    }
+  } else if (r.msg) {
+    detailsEl.innerHTML = `<p style="color:var(--red);font-size:13px">${escHtml(r.msg)}</p>`;
+  }
+
+  // Auto-open details
+  document.getElementById(`scenario-details-${id}`).classList.add('open');
+  updateScenarioSummary();
+}
+
+function evaluateExpectations(expect, qs) {
+  if (!expect) return [];
+  const checks = [];
+
+  if (expect.hasOverall) checks.push({ pass: qs.overall_score != null, desc: 'Has overall score' });
+  if (expect.overallAbove != null) checks.push({ pass: qs.overall_score >= expect.overallAbove, desc: `Overall >= ${expect.overallAbove} (got ${qs.overall_score?.toFixed(2)})` });
+  if (expect.asrAvailable) checks.push({ pass: qs.asr_confidence != null, desc: 'ASR available' });
+  if (expect.asrWerBelow != null) checks.push({ pass: qs.asr_wer != null && qs.asr_wer < expect.asrWerBelow, desc: `WER < ${expect.asrWerBelow} (got ${qs.asr_wer?.toFixed(3)})` });
+  if (expect.asrHypothesisPresent) checks.push({ pass: !!qs.asr_hypothesis, desc: 'ASR hypothesis present' });
+  if (expect.mosAvailable) checks.push({ pass: qs.mos != null, desc: 'MOS available' });
+  if (expect.mosAbove != null) checks.push({ pass: qs.mos != null && qs.mos >= expect.mosAbove, desc: `MOS >= ${expect.mosAbove} (got ${qs.mos?.toFixed(2)})` });
+  if (expect.prosodyAvailable) checks.push({ pass: qs.f0_mean_hz != null, desc: 'Prosody available' });
+  if (expect.f0Present) checks.push({ pass: qs.f0_mean_hz != null, desc: 'F0 data present' });
+  if (expect.signalPresent) checks.push({ pass: qs.snr_db != null, desc: 'Signal metrics present' });
+  if (expect.snrAbove != null) checks.push({ pass: qs.snr_db != null && qs.snr_db >= expect.snrAbove, desc: `SNR >= ${expect.snrAbove} dB (got ${qs.snr_db?.toFixed(1)})` });
+  if (expect.clipRatioBelow != null) checks.push({ pass: qs.clip_ratio != null && qs.clip_ratio < expect.clipRatioBelow, desc: `Clip ratio < ${expect.clipRatioBelow} (got ${qs.clip_ratio?.toFixed(4)})` });
+  if (expect.silenceRatioBelow != null) checks.push({ pass: qs.silence_ratio != null && qs.silence_ratio < expect.silenceRatioBelow, desc: `Silence < ${expect.silenceRatioBelow} (got ${qs.silence_ratio?.toFixed(3)})` });
+  if (expect.noHighSeverityArtifacts) {
+    const hasHigh = qs.artifacts && qs.artifacts.some(a => a.severity === 'high');
+    checks.push({ pass: !hasHigh, desc: 'No high-severity artifacts' });
+  }
+  if (expect.hasRecommendations === true) checks.push({ pass: qs.recommendations && qs.recommendations.length > 0, desc: 'Has recommendations' });
+  if (expect.hasRecommendations === false) checks.push({ pass: true, desc: 'Recommendations check (informational)' });
+
+  return checks;
+}
+
+async function runAllScenarios() {
+  const btn = document.getElementById('runAllBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Running...';
+
+  for (const s of scenarios) {
+    if (s.multiVoice) continue;  // Skip multi-voice for batch
+    await runScenario(s.id);
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = 'Run All';
+  updateScenarioSummary();
+}
+
+function updateScenarioSummary() {
+  const total = scenarios.length;
+  const pass = Object.values(scenarioResults).filter(r => r.status === 'pass').length;
+  const fail = Object.values(scenarioResults).filter(r => r.status === 'fail').length;
+  const err = Object.values(scenarioResults).filter(r => r.status === 'error').length;
+  const pending = total - pass - fail - err;
+  document.getElementById('scenarioSummary').textContent =
+    `${pass} pass / ${fail} fail / ${err} error / ${pending} pending`;
+}
+
+// ── Log ────────────────────────────────────────────────────
+
+function log(level, msg) {
+  const panel = document.getElementById('logPanel');
+  if (!panel) return;
+  const t = new Date().toLocaleTimeString();
+  panel.innerHTML += `<div class="log-line ${level}">[${t}] ${msg}</div>`;
+  panel.scrollTop = panel.scrollHeight;
+}
+
+// ── Start ──────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>

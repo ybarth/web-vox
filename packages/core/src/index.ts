@@ -30,6 +30,10 @@ export type {
   VoiceSampleResult,
   ServerProcessStats,
   ServerManageResult,
+  QualityScore,
+  QualityArtifact,
+  QualityAnalyzerType,
+  NativeQualityScore,
 } from './types.js';
 
 // Engine adapters

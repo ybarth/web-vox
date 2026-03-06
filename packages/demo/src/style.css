@@ -1781,3 +1781,80 @@ header {
     margin-top: 10px;
   }
 }
+
+/* ── Quality Analysis Section ────────────────────────── */
+
+.quality-section h3 {
+  margin-bottom: 12px;
+  color: var(--text);
+}
+
+.quality-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.quality-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid;
+  border-radius: 12px;
+  padding: 10px 18px;
+  min-width: 80px;
+}
+
+.badge-score {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.badge-rating {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+
+.quality-metric {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  min-width: 110px;
+}
+
+.metric-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  color: var(--muted);
+  letter-spacing: 0.5px;
+}
+
+.metric-value {
+  font-size: 0.95rem;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.quality-recommendations ul {
+  list-style: none;
+  padding: 0;
+}
+
+.quality-recommendations li {
+  padding: 6px 0;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+
+.quality-recommendations li:last-child {
+  border-bottom: none;
+}

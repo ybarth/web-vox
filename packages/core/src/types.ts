@@ -60,6 +60,7 @@ export interface SynthesisResult {
   audioBuffer: AudioBuffer;
   metadata: SynthesisMetadata;
   rawPcm?: Float32Array;
+  qualityScore?: QualityScore;
 }
 
 // -- Voice Types --
@@ -117,6 +118,33 @@ export interface SynthesisOptions {
   ssml?: boolean;
   format?: 'audiobuffer' | 'arraybuffer' | 'blob';
   alignment?: AlignmentGranularity;
+  analyzeQuality?: boolean;
+  qualityAnalyzers?: QualityAnalyzerType[];
+}
+
+export type QualityAnalyzerType = 'asr' | 'mos' | 'prosody' | 'signal';
+
+export interface QualityArtifact {
+  type: string;
+  severity: 'low' | 'medium' | 'high';
+  detail: string;
+}
+
+export interface QualityScore {
+  overallScore: number;
+  overallRating: string;
+  asrConfidence?: number;
+  asrWer?: number;
+  asrHypothesis?: string;
+  mos?: number;
+  mosRating?: string;
+  snrDb?: number;
+  clipRatio?: number;
+  silenceRatio?: number;
+  f0MeanHz?: number;
+  f0RangeHz?: number;
+  artifacts: QualityArtifact[];
+  recommendations: string[];
 }
 
 export interface AudioChunk {
@@ -134,6 +162,7 @@ export interface RawSynthesisResult {
   channels: number;
   wordTimestamps: WordTimestamp[];
   totalDurationMs: number;
+  qualityScore?: QualityScore;
 }
 
 // -- Effect Types --
@@ -218,12 +247,32 @@ export interface NativeRequest {
   pitch?: number;
   volume?: number;
   alignment?: AlignmentGranularity;
+  analyze_quality?: boolean;
+  quality_analyzers?: string[];
 }
 
 export interface NativeResponse {
-  type: 'audio_chunk' | 'word_boundary' | 'synthesis_complete' | 'voice_list' | 'error' | 'system_info' | 'voice_validation' | 'piper_catalog' | 'piper_download_complete' | 'voice_samples' | 'voice_sample_result' | 'server_manage_result' | 'server_stats';
+  type: 'audio_chunk' | 'word_boundary' | 'synthesis_complete' | 'voice_list' | 'error' | 'system_info' | 'voice_validation' | 'piper_catalog' | 'piper_download_complete' | 'voice_samples' | 'voice_sample_result' | 'server_manage_result' | 'server_stats' | 'quality_score';
   id?: string;
   [key: string]: unknown;
+}
+
+export interface NativeQualityScore {
+  id: string;
+  overall_score: number;
+  overall_rating: string;
+  asr_confidence?: number;
+  asr_wer?: number;
+  asr_hypothesis?: string;
+  mos?: number;
+  mos_rating?: string;
+  snr_db?: number;
+  clip_ratio?: number;
+  silence_ratio?: number;
+  f0_mean_hz?: number;
+  f0_range_hz?: number;
+  artifacts: { type: string; severity: string; detail: string }[];
+  recommendations: string[];
 }
 
 export interface NativeAudioChunk {

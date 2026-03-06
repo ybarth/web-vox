@@ -18,3 +18,4 @@ pub mod coqui_xtts;
 pub mod qwen;
 pub mod qwen_clone;
 pub mod alignment;
+pub mod quality;

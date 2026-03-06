@@ -33,6 +33,10 @@ const pitchSlider = document.getElementById('pitch-slider') as HTMLInputElement;
 const pitchValue = document.getElementById('pitch-value') as HTMLSpanElement;
 const formatSelect = document.getElementById('format-select') as HTMLSelectElement;
 const alignmentSelect = document.getElementById('alignment-select') as HTMLSelectElement;
+const qualityCheck = document.getElementById('quality-check') as HTMLInputElement;
+const qualitySection = document.getElementById('quality-section') as HTMLElement;
+const qualityGrid = document.getElementById('quality-grid') as HTMLDivElement;
+const qualityRecommendations = document.getElementById('quality-recommendations') as HTMLDivElement;
 const generateBtn = document.getElementById('generate-btn') as HTMLButtonElement;
 const downloadBtn = document.getElementById('download-btn') as HTMLButtonElement;
 const progressSection = document.getElementById('progress-section') as HTMLElement;
@@ -1081,18 +1085,72 @@ async function generate() {
   try {
     const t0 = performance.now();
     const alignment = alignmentSelect.value as 'none' | 'word' | 'word+syllable' | 'word+phoneme' | 'full';
+    const analyzeQuality = qualityCheck.checked;
     const result: SynthesisResult = await vox.synthesize(text, {
       voice,
       rate,
       pitch,
       engine: 'native-bridge',
       alignment,
+      analyzeQuality,
     });
     const elapsed = Math.round(performance.now() - t0);
 
     finishProgress();
     log(`Synthesis complete in ${elapsed}ms`, 'success');
     log(`Words: ${result.metadata.wordTimestamps.length}, duration: ${Math.round(result.metadata.totalDurationMs)}ms`);
+
+    // ── Quality score display ──
+    if (result.qualityScore) {
+      const qs = result.qualityScore;
+      qualitySection.hidden = false;
+      qualityGrid.innerHTML = '';
+
+      const addMetric = (label: string, value: string | number | undefined, unit?: string) => {
+        if (value === undefined || value === null) return;
+        const el = document.createElement('div');
+        el.className = 'quality-metric';
+        el.innerHTML = `<span class="metric-label">${label}</span><span class="metric-value">${value}${unit ?? ''}</span>`;
+        qualityGrid.appendChild(el);
+      };
+
+      const ratingColors: Record<string, string> = {
+        excellent: '#22c55e', good: '#84cc16', fair: '#eab308', poor: '#f97316', bad: '#ef4444',
+      };
+      const badge = document.createElement('div');
+      badge.className = 'quality-badge';
+      badge.style.borderColor = ratingColors[qs.overallRating] ?? '#888';
+      badge.innerHTML = `<span class="badge-score">${qs.overallScore.toFixed(1)}</span><span class="badge-rating">${qs.overallRating}</span>`;
+      qualityGrid.appendChild(badge);
+
+      addMetric('ASR Confidence', qs.asrConfidence?.toFixed(2));
+      addMetric('Word Error Rate', qs.asrWer?.toFixed(3));
+      addMetric('MOS', qs.mos?.toFixed(2), ` (${qs.mosRating ?? ''})`);
+      addMetric('SNR', qs.snrDb?.toFixed(1), ' dB');
+      addMetric('F0 Mean', qs.f0MeanHz?.toFixed(0), ' Hz');
+      addMetric('F0 Range', qs.f0RangeHz?.toFixed(0), ' Hz');
+
+      if (qs.artifacts.length > 0) {
+        for (const a of qs.artifacts) {
+          addMetric(`Artifact: ${a.type}`, `${a.severity} — ${a.detail}`);
+        }
+      }
+
+      qualityRecommendations.innerHTML = '';
+      if (qs.recommendations.length > 0) {
+        const ul = document.createElement('ul');
+        for (const rec of qs.recommendations) {
+          const li = document.createElement('li');
+          li.textContent = rec;
+          ul.appendChild(li);
+        }
+        qualityRecommendations.appendChild(ul);
+      }
+
+      log(`Quality: ${qs.overallScore.toFixed(1)}/5.0 (${qs.overallRating})`, qs.overallScore >= 3.5 ? 'success' : 'warn');
+    } else {
+      qualitySection.hidden = true;
+    }
 
     // Clear any previous failure record for this voice
     failedVoices.delete(voice);

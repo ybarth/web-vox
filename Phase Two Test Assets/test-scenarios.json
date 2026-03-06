@@ -1,0 +1,130 @@
+{
+  "scenarios": [
+    {
+      "id": "basic-quality",
+      "name": "Basic Quality Check",
+      "text": "Hello world.",
+      "analyzers": ["asr", "signal"],
+      "description": "Simplest case. Verifies that quality server responds with ASR verification and signal metrics.",
+      "expect": {
+        "hasOverall": true,
+        "asrAvailable": true,
+        "asrWerBelow": 0.5,
+        "signalPresent": true,
+        "snrAbove": 5
+      }
+    },
+    {
+      "id": "full-council",
+      "name": "Full Model Council",
+      "text": "The quick brown fox jumps over the lazy dog.",
+      "analyzers": [],
+      "description": "All four analyzers: ASR, MOS, prosody, signal. Tests the complete pipeline.",
+      "expect": {
+        "hasOverall": true,
+        "asrAvailable": true,
+        "mosAvailable": true,
+        "prosodyAvailable": true,
+        "signalPresent": true,
+        "overallAbove": 2.0
+      }
+    },
+    {
+      "id": "asr-accuracy",
+      "name": "ASR Transcript Verification",
+      "text": "She sells seashells by the seashore.",
+      "analyzers": ["asr"],
+      "description": "Tests ASR accuracy on a tongue-twister. Checks that the hypothesis is close to the input.",
+      "expect": {
+        "asrAvailable": true,
+        "asrWerBelow": 0.3,
+        "asrHypothesisPresent": true
+      }
+    },
+    {
+      "id": "prosody-monotone",
+      "name": "Prosody: Monotone Detection",
+      "text": "One two three four five six seven eight nine ten.",
+      "analyzers": ["prosody"],
+      "description": "A flat number list should have limited F0 range. Tests prosody analyzer's ability to detect monotone speech.",
+      "expect": {
+        "prosodyAvailable": true,
+        "f0Present": true
+      }
+    },
+    {
+      "id": "prosody-expressive",
+      "name": "Prosody: Expressive Speech",
+      "text": "What an incredible, absolutely amazing discovery! I can't believe it actually worked!",
+      "analyzers": ["prosody"],
+      "description": "Exclamatory text should show wider F0 range than monotone. Tests expressiveness detection.",
+      "expect": {
+        "prosodyAvailable": true,
+        "f0Present": true
+      }
+    },
+    {
+      "id": "signal-clean",
+      "name": "Signal Quality: Clean Audio",
+      "text": "The development of renewable energy sources represents one of the most important technological challenges of the twenty-first century.",
+      "analyzers": ["signal"],
+      "description": "Checks that synthesized audio has reasonable SNR, no clipping, and acceptable silence ratio.",
+      "expect": {
+        "signalPresent": true,
+        "snrAbove": 10,
+        "clipRatioBelow": 0.01,
+        "silenceRatioBelow": 0.5,
+        "noHighSeverityArtifacts": true
+      }
+    },
+    {
+      "id": "mos-neural-engine",
+      "name": "MOS: Neural Engine Quality",
+      "text": "In the realm of artificial intelligence, large language models have demonstrated remarkable capabilities in understanding and generating human language.",
+      "analyzers": ["mos"],
+      "description": "MOS prediction on a neural TTS engine. Neural engines should score above 3.0.",
+      "expect": {
+        "mosAvailable": true,
+        "mosAbove": 2.5
+      }
+    },
+    {
+      "id": "recommendations",
+      "name": "Recommendations Check",
+      "text": "A.",
+      "analyzers": [],
+      "description": "Very short text may produce low-quality audio. Checks that the system generates useful recommendations.",
+      "expect": {
+        "hasOverall": true,
+        "hasRecommendations": false
+      }
+    },
+    {
+      "id": "long-passage",
+      "name": "Long Passage Full Analysis",
+      "text": "The extraordinary advancement of artificial intelligence represents a fundamental transformation in how humanity interacts with technology. From natural language processing to computer vision, these sophisticated algorithms are reshaping industries, revolutionizing healthcare diagnostics, and accelerating scientific discovery at an unprecedented pace. Nevertheless, important questions about responsibility, transparency, and the equitable distribution of benefits remain at the forefront of public discourse.",
+      "analyzers": [],
+      "description": "Full council on a long passage. Tests that all metrics are coherent across a substantial piece of audio.",
+      "expect": {
+        "hasOverall": true,
+        "asrAvailable": true,
+        "mosAvailable": true,
+        "prosodyAvailable": true,
+        "signalPresent": true,
+        "overallAbove": 2.5,
+        "asrWerBelow": 0.4
+      }
+    },
+    {
+      "id": "cross-engine-compare",
+      "name": "Cross-Engine Comparison",
+      "text": "Good morning. Today we discuss the future of renewable energy technology.",
+      "analyzers": [],
+      "multiVoice": true,
+      "description": "Synthesize the same text with multiple engines and compare quality scores side by side.",
+      "expect": {
+        "hasOverall": true
+      }
+    }
+  ]
+}

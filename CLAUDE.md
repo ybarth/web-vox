@@ -26,7 +26,7 @@ Web-vox-pro is a meta-TTS platform forked from web-vox. It transforms multiple o
 | Service | Port | Purpose | Status |
 |---------|------|---------|--------|
 | `alignment_server.py` | 21747 | Forced alignment via Whisper/stable-ts | Phase 1 - BUILT |
-| `quality_server.py` | 21748 | Audio quality analysis (model council) | Phase 2 - PLANNED |
+| `quality_server.py` | 21748 | Audio quality analysis (model council) | Phase 2 - BUILT |
 | `voice_designer_server.py` | 21749 | Voice creation via Parler-TTS + blending | Phase 3 - PLANNED |
 | `document_analyzer_server.py` | 21750 | LLM-based text structure detection | Phase 4 - PLANNED |
 | `ocr_server.py` | 21751 | OCR with spatial bounding boxes | Phase 6 - PLANNED |
@@ -55,10 +55,23 @@ Web-vox-pro is a meta-TTS platform forked from web-vox. It transforms multiple o
 - Python deps installed in `tts-venv` (stable-ts, pyphen, librosa)
 - End-to-end tested: WS server + alignment server, synthesis with `word+syllable` alignment returns confidence scores and syllable data
 
-### Phase 2: Quality Analysis & Correction Loop - PLANNED
-- Model council: Kimi Audio (Moonshot AI), UTMOS, Whisper, DNSMOS/NISQA, Crepe/librosa
-- ASR verification, prosody scoring, artifact detection
-- Targeted re-synthesis with crossfade splicing
+### Phase 2: Quality Analysis & Correction Loop - COMPLETE
+- `quality_server.py` — Python server (port 21748) with model council:
+  - ASR verification via Whisper (stable-ts) — transcript comparison, word error rate
+  - MOS prediction via UTMOS (torch Hub) — mean opinion score
+  - Prosody analysis via librosa — F0 stats, energy, spectral brightness
+  - Signal quality metrics — SNR, clipping detection, silence ratio, artifact flagging
+- `quality.rs` — Rust HTTP client (same ureq pattern as alignment.rs)
+- Protocol extended: `QualityScore`, `QualityArtifact` structs; `HostMessage::QualityScore` variant
+- `SynthesizeRequest` has `analyze_quality` bool and `quality_analyzers` list
+- TypeScript types mirrored: `QualityScore`, `QualityArtifact`, `QualityAnalyzerType`, `NativeQualityScore`
+- `SynthesisOptions.analyzeQuality` + `qualityAnalyzers` fields
+- `NativeBridgeEngine` collects quality_score messages, maps to `RawSynthesisResult.qualityScore`
+- `SynthesisResult.qualityScore` exposed through `WebVox.synthesize()`
+- Demo UI has "Analyze Quality" checkbox with quality score display (badge, metrics grid, recommendations)
+- Quality server added to `SERVER_DEFS` in ws_server.rs
+- Integrated into `handle_synthesize` — runs on raw audio before sonic time-stretch, with graceful fallback
+- **Not yet implemented:** Targeted re-synthesis with crossfade splicing (planned for Phase 2b)
 
 ### Phase 3: Voice Designer - PLANNED
 - Text-prompted voice creation via Parler-TTS
