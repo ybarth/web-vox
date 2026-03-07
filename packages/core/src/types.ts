@@ -233,8 +233,80 @@ export interface ServerManageResult {
   error?: string;
 }
 
+// -- Voice Designer Types --
+
+export interface VoiceDesignResult {
+  id: string;
+  success: boolean;
+  audioBase64?: string;
+  sampleRate?: number;
+  durationMs?: number;
+  description?: string;
+  error?: string;
+}
+
+export interface VoiceBlendResult {
+  id: string;
+  success: boolean;
+  embedding?: number[];
+  dimensions?: number;
+  weightsNormalized?: number[];
+  error?: string;
+}
+
+export interface VoiceProfileSummary {
+  id: string;
+  name: string;
+  description?: string;
+  sampleRate?: number;
+  hasEmbedding: boolean;
+  hasReferenceAudio: boolean;
+  createdAt?: number;
+}
+
+export interface VoiceProfileResult {
+  success: boolean;
+  profileId?: string;
+  error?: string;
+}
+
+export interface NativeVoiceDesignResult {
+  id: string;
+  success: boolean;
+  audio_base64?: string;
+  sample_rate?: number;
+  duration_ms?: number;
+  description?: string;
+  error?: string;
+}
+
+export interface NativeVoiceBlendResult {
+  id: string;
+  success: boolean;
+  embedding?: number[];
+  dimensions?: number;
+  weights_normalized?: number[];
+  error?: string;
+}
+
+export interface NativeVoiceProfileSummary {
+  id: string;
+  name: string;
+  description?: string;
+  sample_rate?: number;
+  has_embedding: boolean;
+  has_reference_audio: boolean;
+  created_at?: number;
+}
+
+export interface NativeVoiceProfileResult {
+  success: boolean;
+  profile_id?: string;
+  error?: string;
+}
+
 export interface NativeRequest {
-  type: 'synthesize' | 'cancel' | 'list_voices' | 'get_system_info' | 'validate_voice' | 'list_piper_catalog' | 'download_piper_voice' | 'list_voice_samples' | 'upload_voice_sample' | 'delete_voice_sample' | 'manage_server' | 'get_server_stats';
+  type: 'synthesize' | 'cancel' | 'list_voices' | 'get_system_info' | 'validate_voice' | 'list_piper_catalog' | 'download_piper_voice' | 'list_voice_samples' | 'upload_voice_sample' | 'delete_voice_sample' | 'manage_server' | 'get_server_stats' | 'design_voice' | 'blend_voices' | 'list_voice_profiles' | 'save_voice_profile' | 'delete_voice_profile';
   id?: string;
   text?: string;
   voice_id?: string;
@@ -249,10 +321,20 @@ export interface NativeRequest {
   alignment?: AlignmentGranularity;
   analyze_quality?: boolean;
   quality_analyzers?: string[];
+  // Voice designer fields
+  description?: string;
+  preview_text?: string;
+  audio_samples_base64?: string[];
+  sample_rates?: number[];
+  weights?: number[];
+  profile_id?: string;
+  embedding?: number[];
+  reference_audio_base64?: string;
+  sample_rate?: number;
 }
 
 export interface NativeResponse {
-  type: 'audio_chunk' | 'word_boundary' | 'synthesis_complete' | 'voice_list' | 'error' | 'system_info' | 'voice_validation' | 'piper_catalog' | 'piper_download_complete' | 'voice_samples' | 'voice_sample_result' | 'server_manage_result' | 'server_stats' | 'quality_score';
+  type: 'audio_chunk' | 'word_boundary' | 'synthesis_complete' | 'voice_list' | 'error' | 'system_info' | 'voice_validation' | 'piper_catalog' | 'piper_download_complete' | 'voice_samples' | 'voice_sample_result' | 'server_manage_result' | 'server_stats' | 'quality_score' | 'voice_design_result' | 'voice_blend_result' | 'voice_profiles' | 'voice_profile_result';
   id?: string;
   [key: string]: unknown;
 }

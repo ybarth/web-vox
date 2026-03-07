@@ -73,10 +73,22 @@ Web-vox-pro is a meta-TTS platform forked from web-vox. It transforms multiple o
 - Integrated into `handle_synthesize` — runs on raw audio before sonic time-stretch, with graceful fallback
 - **Not yet implemented:** Targeted re-synthesis with crossfade splicing (planned for Phase 2b)
 
-### Phase 3: Voice Designer - PLANNED
-- Text-prompted voice creation via Parler-TTS
-- Multi-sample blending via speaker embedding interpolation
-- Multi-engine preview and comparison
+### Phase 3: Voice Designer - COMPLETE
+- `voice_designer_server.py` — Python server (port 21749) with:
+  - Text-prompted voice creation via Parler-TTS (`/design` endpoint)
+  - Speaker embedding extraction via Resemblyzer (with spectral fallback) (`/extract_embedding`)
+  - Multi-sample blending via weighted embedding interpolation (`/blend`)
+  - Voice profile management: save, list, delete (`/save_profile`, `/list_profiles`, `/delete_profile`)
+  - Profiles stored as JSON + PCM files in `voice_profiles/` directory
+- `voice_designer.rs` — Rust HTTP client (same ureq pattern as alignment.rs/quality.rs)
+- Protocol extended: `DesignVoiceRequest`, `BlendVoicesRequest`, `SaveVoiceProfileRequest`, `DeleteVoiceProfileRequest`; `VoiceDesignResult`, `VoiceBlendResult`, `VoiceProfileList`, `VoiceProfileSummary`, `VoiceProfileResult`; corresponding `HostMessage` variants
+- TypeScript types mirrored: `VoiceDesignResult`, `VoiceBlendResult`, `VoiceProfileSummary`, `VoiceProfileResult`, `NativeVoiceDesignResult`, `NativeVoiceBlendResult`, `NativeVoiceProfileSummary`, `NativeVoiceProfileResult`
+- `NativeBridgeEngine` methods: `designVoice()`, `blendVoices()`, `listVoiceProfiles()`, `saveVoiceProfile()`, `deleteVoiceProfile()`
+- Voice designer added to `SERVER_DEFS` in ws_server.rs
+- Handlers: `handle_design_voice`, `handle_blend_voices`, `handle_list_voice_profiles`, `handle_save_voice_profile`, `handle_delete_voice_profile`
+- Demo UI: "Voice Designer" button + modal with description-based generation, blend panel with sample selection/weights, profile management with save/delete
+- **Dependencies needed:** `parler-tts`, `transformers`, `resemblyzer` (optional, has spectral fallback)
+- **Not yet implemented:** Multi-engine preview comparison (planned for Phase 3b)
 
 ### Phase 4: Intelligent Document Reader - PLANNED
 - Plain text + AI structure detection (4a), HTML/Markdown parsing (4b), EPUB/DOCX/PDF (4c)

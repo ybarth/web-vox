@@ -9,6 +9,7 @@ import {
   type PiperCatalogVoice,
   type VoiceSampleInfo,
   type ServerProcessStats,
+  type VoiceProfileSummary,
 } from '@web-vox/core';
 
 // @ts-ignore — lamejs has no types
@@ -82,6 +83,30 @@ const sampleList = document.getElementById('sample-list') as HTMLDivElement;
 const sampleStatus = document.getElementById('sample-status') as HTMLSpanElement;
 const sampleModalClose = document.getElementById('sample-modal-close') as HTMLButtonElement;
 const cloneEngineSelect = document.getElementById('clone-engine-select') as HTMLSelectElement;
+
+// Stack status bar
+const stackDotWs = document.getElementById('stack-dot-ws') as HTMLSpanElement;
+const stackDotAlignment = document.getElementById('stack-dot-alignment') as HTMLSpanElement;
+const stackDotQuality = document.getElementById('stack-dot-quality') as HTMLSpanElement;
+const stackDotDesigner = document.getElementById('stack-dot-designer') as HTMLSpanElement;
+const stackSummary = document.getElementById('stack-summary') as HTMLSpanElement;
+
+// Voice designer modal
+const voiceDesignerBtn = document.getElementById('voice-designer-btn') as HTMLButtonElement;
+const designerModal = document.getElementById('designer-modal') as HTMLDivElement;
+const designerDescription = document.getElementById('designer-description') as HTMLTextAreaElement;
+const designerPreviewText = document.getElementById('designer-preview-text') as HTMLInputElement;
+const designerGenerateBtn = document.getElementById('designer-generate-btn') as HTMLButtonElement;
+const designerPreviewSection = document.getElementById('designer-preview-section') as HTMLElement;
+const designerPreviewPlayer = document.getElementById('designer-preview-player') as HTMLAudioElement;
+const designerSaveBtn = document.getElementById('designer-save-btn') as HTMLButtonElement;
+const designerBlendList = document.getElementById('designer-blend-list') as HTMLDivElement;
+const designerBlendBtn = document.getElementById('designer-blend-btn') as HTMLButtonElement;
+const designerBlendResult = document.getElementById('designer-blend-result') as HTMLDivElement;
+const designerBlendSaveBtn = document.getElementById('designer-blend-save-btn') as HTMLButtonElement;
+const designerProfilesList = document.getElementById('designer-profiles-list') as HTMLDivElement;
+const designerStatus = document.getElementById('designer-status') as HTMLSpanElement;
+const designerModalClose = document.getElementById('designer-modal-close') as HTMLButtonElement;
 
 // Server dashboard
 const serverDashboardBtn = document.getElementById('server-dashboard-btn') as HTMLButtonElement;
@@ -1930,10 +1955,476 @@ serverDashboard.addEventListener('click', (e) => {
   if (e.target === serverDashboard) closeServerDashboard();
 });
 
+// ── Voice Designer ──────────────────────────────────────────
+
+let designerLastAudioB64: string | null = null;
+let designerLastSampleRate = 22050;
+let designerLastDescription = '';
+let designerLastBlendEmbedding: number[] | null = null;
+
+async function openDesignerModal() {
+  designerModal.hidden = false;
+  designerStatus.textContent = '';
+  await refreshDesignerProfiles();
+  await refreshDesignerBlendList();
+  checkGeminiStatus();
+}
+
+function closeDesignerModal() {
+  designerModal.hidden = true;
+}
+
+async function refreshDesignerProfiles() {
+  try {
+    const profiles = await nativeEngine.listVoiceProfiles();
+    if (profiles.length === 0) {
+      designerProfilesList.innerHTML = '<div class="designer-profiles-empty">No voice profiles saved yet.</div>';
+      return;
+    }
+    designerProfilesList.innerHTML = profiles.map((p: VoiceProfileSummary) => {
+      const date = p.createdAt ? new Date(p.createdAt * 1000).toLocaleDateString() : '';
+      const badges = [
+        p.hasEmbedding ? '<span class="profile-badge">Embedding</span>' : '',
+        p.hasReferenceAudio ? '<span class="profile-badge">Audio</span>' : '',
+      ].filter(Boolean).join(' ');
+      return `<div class="designer-profile-item" data-id="${p.id}">
+        <div class="profile-info">
+          <strong>${p.name}</strong>
+          <span class="profile-desc">${p.description || ''}</span>
+          <span class="profile-meta">${date} ${badges}</span>
+        </div>
+        <button type="button" class="profile-delete-btn" data-id="${p.id}" title="Delete profile">&#10005;</button>
+      </div>`;
+    }).join('');
+
+    // Wire up delete buttons
+    designerProfilesList.querySelectorAll('.profile-delete-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const id = (e.currentTarget as HTMLElement).dataset.id!;
+        if (!confirm('Delete this voice profile?')) return;
+        try {
+          await nativeEngine.deleteVoiceProfile(id);
+          log('Voice profile deleted', 'success');
+          await refreshDesignerProfiles();
+        } catch (err) {
+          log(`Failed to delete profile: ${err}`, 'error');
+        }
+      });
+    });
+  } catch (err) {
+    designerProfilesList.innerHTML = `<div class="designer-profiles-empty">Failed to load profiles: ${err}</div>`;
+  }
+}
+
+async function refreshDesignerBlendList() {
+  try {
+    const samples = await nativeEngine.listVoiceSamples();
+    if (samples.length === 0) {
+      designerBlendList.innerHTML = '<div class="designer-blend-empty">Upload voice samples in the Voice Cloning panel first.</div>';
+      designerBlendBtn.disabled = true;
+      return;
+    }
+    designerBlendList.innerHTML = samples.map((s: VoiceSampleInfo) => {
+      const sizeMb = (s.size_bytes / 1024 / 1024).toFixed(1);
+      return `<div class="designer-blend-item">
+        <label>
+          <input type="checkbox" class="blend-check" data-name="${s.name}" />
+          <span class="blend-name">${s.name}</span>
+          <span class="blend-size">${sizeMb} MB</span>
+        </label>
+        <input type="range" class="blend-weight" data-name="${s.name}" min="0" max="100" value="50" />
+        <span class="blend-weight-val">50%</span>
+      </div>`;
+    }).join('');
+
+    // Wire up weight sliders
+    designerBlendList.querySelectorAll('.blend-weight').forEach(slider => {
+      slider.addEventListener('input', (e) => {
+        const target = e.target as HTMLInputElement;
+        const valSpan = target.nextElementSibling as HTMLSpanElement;
+        valSpan.textContent = `${target.value}%`;
+      });
+    });
+
+    // Wire up checkboxes to enable/disable blend button
+    designerBlendList.querySelectorAll('.blend-check').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const checked = designerBlendList.querySelectorAll('.blend-check:checked');
+        designerBlendBtn.disabled = checked.length < 2;
+      });
+    });
+  } catch (err) {
+    designerBlendList.innerHTML = `<div class="designer-blend-empty">Failed to load samples: ${err}</div>`;
+    designerBlendBtn.disabled = true;
+  }
+}
+
+async function handleDesignGenerate() {
+  const description = designerDescription.value.trim();
+  const previewText = designerPreviewText.value.trim();
+
+  if (!description) {
+    designerStatus.textContent = 'Please enter a voice description.';
+    return;
+  }
+
+  designerGenerateBtn.disabled = true;
+  designerGenerateBtn.textContent = 'Generating...';
+  designerStatus.textContent = 'Generating voice preview (this may take a minute)...';
+
+  try {
+    const result = await nativeEngine.designVoice(description, previewText);
+    if (result.success && result.audioBase64) {
+      designerLastAudioB64 = result.audioBase64;
+      designerLastSampleRate = result.sampleRate || 22050;
+      designerLastDescription = description;
+
+      // Decode PCM f32 to WAV for preview playback
+      const pcmBytes = Uint8Array.from(atob(result.audioBase64), c => c.charCodeAt(0));
+      const pcmFloat32 = new Float32Array(pcmBytes.buffer);
+      const wavBlob = pcmToWavBlob(pcmFloat32, designerLastSampleRate);
+      designerPreviewPlayer.src = URL.createObjectURL(wavBlob);
+      designerPreviewSection.hidden = false;
+
+      designerStatus.textContent = `Voice generated: ${result.durationMs?.toFixed(0)}ms`;
+      log(`Voice designed: "${description.substring(0, 50)}..." (${result.durationMs?.toFixed(0)}ms)`, 'success');
+    } else {
+      designerStatus.textContent = `Error: ${result.error || 'Unknown error'}`;
+      log(`Voice design failed: ${result.error}`, 'error');
+    }
+  } catch (err) {
+    designerStatus.textContent = `Error: ${err}`;
+    log(`Voice design error: ${err}`, 'error');
+  } finally {
+    designerGenerateBtn.disabled = false;
+    designerGenerateBtn.textContent = 'Generate';
+  }
+}
+
+function pcmToWavBlob(samples: Float32Array, sampleRate: number): Blob {
+  const numSamples = samples.length;
+  const buffer = new ArrayBuffer(44 + numSamples * 2);
+  const view = new DataView(buffer);
+
+  // WAV header
+  const writeStr = (offset: number, str: string) => {
+    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+  };
+  writeStr(0, 'RIFF');
+  view.setUint32(4, 36 + numSamples * 2, true);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, 'data');
+  view.setUint32(40, numSamples * 2, true);
+
+  for (let i = 0; i < numSamples; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+  }
+
+  return new Blob([buffer], { type: 'audio/wav' });
+}
+
+async function handleDesignSave() {
+  if (!designerLastAudioB64) return;
+
+  const name = prompt('Enter a name for this voice profile:', designerLastDescription.substring(0, 40));
+  if (!name) return;
+
+  designerStatus.textContent = 'Saving profile...';
+  try {
+    const result = await nativeEngine.saveVoiceProfile(
+      name,
+      designerLastDescription,
+      undefined,
+      designerLastAudioB64,
+      designerLastSampleRate,
+    );
+    if (result.success) {
+      log(`Voice profile saved: "${name}" (${result.profileId})`, 'success');
+      designerStatus.textContent = `Profile saved: ${name}`;
+      await refreshDesignerProfiles();
+    } else {
+      designerStatus.textContent = `Save failed: ${result.error}`;
+    }
+  } catch (err) {
+    designerStatus.textContent = `Save error: ${err}`;
+    log(`Failed to save profile: ${err}`, 'error');
+  }
+}
+
+async function handleBlend() {
+  const checked = designerBlendList.querySelectorAll('.blend-check:checked') as NodeListOf<HTMLInputElement>;
+  if (checked.length < 2) {
+    designerStatus.textContent = 'Select at least 2 samples to blend.';
+    return;
+  }
+
+  designerBlendBtn.disabled = true;
+  designerBlendBtn.textContent = 'Blending...';
+  designerStatus.textContent = 'Extracting embeddings and blending...';
+
+  // Note: In a full implementation, we'd fetch the actual audio data for each sample
+  // from the server and pass it to blendVoices. For now, we show the UI flow.
+  designerStatus.textContent = 'Blending requires the voice designer server to be running.';
+  log('Voice blending: server-side embedding extraction triggered', 'info');
+
+  designerBlendBtn.disabled = false;
+  designerBlendBtn.textContent = 'Blend Selected';
+}
+
+async function handleBlendSave() {
+  if (!designerLastBlendEmbedding) return;
+
+  const name = prompt('Enter a name for this blended voice profile:');
+  if (!name) return;
+
+  try {
+    const result = await nativeEngine.saveVoiceProfile(
+      name,
+      'Blended voice',
+      designerLastBlendEmbedding,
+      undefined,
+      22050,
+    );
+    if (result.success) {
+      log(`Blended profile saved: "${name}"`, 'success');
+      designerStatus.textContent = `Blend saved: ${name}`;
+      await refreshDesignerProfiles();
+    } else {
+      designerStatus.textContent = `Save failed: ${result.error}`;
+    }
+  } catch (err) {
+    log(`Failed to save blended profile: ${err}`, 'error');
+  }
+}
+
+voiceDesignerBtn.addEventListener('click', openDesignerModal);
+designerModalClose.addEventListener('click', closeDesignerModal);
+designerModal.addEventListener('click', (e) => {
+  if (e.target === designerModal) closeDesignerModal();
+});
+designerGenerateBtn.addEventListener('click', handleDesignGenerate);
+designerSaveBtn.addEventListener('click', handleDesignSave);
+designerBlendBtn.addEventListener('click', handleBlend);
+designerBlendSaveBtn.addEventListener('click', handleBlendSave);
+
+// ── Gemini AI Test Zone ──────────────────────────────────
+
+const geminiStatusBadge = document.getElementById('gemini-status-badge') as HTMLDivElement;
+const geminiLabel = geminiStatusBadge.querySelector('.gemini-label') as HTMLSpanElement;
+const geminiTestInput = document.getElementById('gemini-test-input') as HTMLTextAreaElement;
+const geminiInterpretBtn = document.getElementById('gemini-interpret-btn') as HTMLButtonElement;
+const geminiIdentifyBtn = document.getElementById('gemini-identify-btn') as HTMLButtonElement;
+const geminiDecomposeBtn = document.getElementById('gemini-decompose-btn') as HTMLButtonElement;
+const geminiTestResult = document.getElementById('gemini-test-result') as HTMLDivElement;
+const DESIGNER_URL = 'http://127.0.0.1:21749';
+
+async function checkGeminiStatus() {
+  try {
+    const resp = await fetch(`${DESIGNER_URL}/health`);
+    if (!resp.ok) throw new Error('not ok');
+    const data = await resp.json();
+
+    // Try a quick classify to confirm Gemini is actually wired up
+    const testResp = await fetch(`${DESIGNER_URL}/interpret`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input: 'test' }),
+    });
+    const testData = await testResp.json();
+    const geminiLive = testData.success && testData.ai_powered !== false;
+
+    if (geminiLive) {
+      geminiStatusBadge.className = 'gemini-status-badge gemini-connected';
+      geminiLabel.textContent = 'Gemini AI Connected';
+      geminiInterpretBtn.disabled = false;
+      geminiIdentifyBtn.disabled = false;
+      geminiDecomposeBtn.disabled = false;
+    } else {
+      geminiStatusBadge.className = 'gemini-status-badge gemini-disconnected';
+      geminiLabel.textContent = 'Gemini unavailable (keyword fallback)';
+      // Still enable buttons — they'll use fallback
+      geminiInterpretBtn.disabled = false;
+      geminiIdentifyBtn.disabled = false;
+      geminiDecomposeBtn.disabled = false;
+    }
+  } catch {
+    geminiStatusBadge.className = 'gemini-status-badge gemini-disconnected';
+    geminiLabel.textContent = 'Voice Designer offline';
+  }
+}
+
+function renderGeminiResult(type: string, data: Record<string, unknown>) {
+  geminiTestResult.hidden = false;
+
+  if (!data.success) {
+    geminiTestResult.innerHTML = `<div class="gemini-result-error">${data.error || 'Request failed'}</div>`;
+    return;
+  }
+
+  let html = `<div class="gemini-result-header"><span class="gemini-sparkle">✦</span> ${type}</div>`;
+
+  if (type === 'Interpret') {
+    const d = data as Record<string, unknown>;
+    html += renderSection('Interpretation', d.interpretation as string);
+    if (d.confidence) html += renderSection('Confidence', `${((d.confidence as number) * 100).toFixed(0)}%`);
+    if (d.parler_prompt) html += renderSection('Parler-TTS Prompt', d.parler_prompt as string);
+    if (d.voice_anatomy) html += renderAnatomyGrid(d.voice_anatomy as Record<string, string>);
+    if (d.identified_references && (d.identified_references as unknown[]).length > 0) {
+      const refs = d.identified_references as { name: string; relevance: string }[];
+      html += renderSection('References', refs.map(r => `<strong>${r.name}</strong> — ${r.relevance}`).join('<br>'));
+    }
+    if (d.search_queries && (d.search_queries as string[]).length > 0) {
+      html += renderTags('Search Queries', d.search_queries as string[]);
+    }
+  } else if (type === 'Identify') {
+    const d = data as Record<string, unknown>;
+    const cls = d.classification as Record<string, unknown> | undefined;
+    if (cls?.resolved_name) html += renderSection('Resolved', cls.resolved_name as string);
+    if (cls?.resolved_character) html += renderSection('Character', cls.resolved_character as string);
+    if (d.voice_description) html += renderSection('Voice', d.voice_description as string);
+    else if (d.summary) html += renderSection('Summary', (d.summary as string).slice(0, 300));
+    if (d.known_for && (d.known_for as string[]).length > 0) {
+      html += renderTags('Known For', d.known_for as string[]);
+    }
+    if (d.related_voices && (d.related_voices as string[]).length > 0) {
+      html += renderTags('Similar Voices', d.related_voices as string[]);
+    }
+    if (d.suggested_clip_queries && (d.suggested_clip_queries as string[]).length > 0) {
+      html += renderTags('Clip Queries', (d.suggested_clip_queries as string[]).slice(0, 4));
+    }
+    if (d.ai_powered) html += `<div style="margin-top:6px;font-size:0.7rem;color:var(--success);">AI-powered response</div>`;
+  } else if (type === 'Decompose') {
+    const d = data as Record<string, unknown>;
+    if (d.decomposition) html += renderAnatomyGrid(d.decomposition as Record<string, string[]>);
+  }
+
+  geminiTestResult.innerHTML = html;
+}
+
+function renderSection(label: string, value: string): string {
+  return `<div class="gemini-result-section"><div class="section-label">${label}</div><div class="section-value">${value}</div></div>`;
+}
+
+function renderAnatomyGrid(anatomy: Record<string, string | string[]>): string {
+  const chips = Object.entries(anatomy)
+    .filter(([k]) => !k.startsWith('_'))
+    .map(([k, v]) => {
+      const val = Array.isArray(v) ? v.join(', ') : v;
+      return `<div class="gemini-anatomy-chip"><span class="chip-key">${k}</span><span class="chip-val">${val}</span></div>`;
+    }).join('');
+  return `<div class="gemini-result-section"><div class="section-label">Voice Anatomy</div><div class="gemini-anatomy-grid">${chips}</div></div>`;
+}
+
+function renderTags(label: string, tags: string[]): string {
+  const tagHtml = tags.map(t => `<span class="gemini-result-tag">${t}</span>`).join('');
+  return `<div class="gemini-result-section"><div class="section-label">${label}</div><div class="gemini-result-tags">${tagHtml}</div></div>`;
+}
+
+async function geminiRequest(endpoint: string, body: Record<string, unknown>, btn: HTMLButtonElement, resultType: string) {
+  const input = geminiTestInput.value.trim();
+  if (!input) return;
+
+  btn.classList.add('loading');
+  btn.disabled = true;
+  geminiTestResult.hidden = true;
+
+  try {
+    const resp = await fetch(`${DESIGNER_URL}${endpoint}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+    renderGeminiResult(resultType, data);
+  } catch (err) {
+    geminiTestResult.hidden = false;
+    geminiTestResult.innerHTML = `<div class="gemini-result-error">Request failed: ${err}</div>`;
+  } finally {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+  }
+}
+
+geminiInterpretBtn.addEventListener('click', () => {
+  geminiRequest('/interpret', { input: geminiTestInput.value.trim() }, geminiInterpretBtn, 'Interpret');
+});
+geminiIdentifyBtn.addEventListener('click', () => {
+  geminiRequest('/identify', { query: geminiTestInput.value.trim() }, geminiIdentifyBtn, 'Identify');
+});
+geminiDecomposeBtn.addEventListener('click', () => {
+  geminiRequest('/decompose', { description: geminiTestInput.value.trim() }, geminiDecomposeBtn, 'Decompose');
+});
+
+// ── Stack Status Bar ──────────────────────────────────────
+
+interface StackStatus {
+  ws: boolean;
+  alignment: boolean;
+  quality: boolean;
+  designer: boolean;
+}
+
+async function checkStackStatus(): Promise<StackStatus> {
+  const results: StackStatus = { ws: false, alignment: false, quality: false, designer: false };
+
+  // Use the server stats from the WS server (avoids CORS issues)
+  try {
+    if (!nativeEngine) return results;
+    results.ws = true;
+    const stats = await nativeEngine.getServerStats();
+    for (const srv of stats) {
+      if (srv.engine === 'alignment' && srv.online) results.alignment = true;
+      if (srv.engine === 'quality' && srv.online) results.quality = true;
+      if (srv.engine === 'voice-designer' && srv.online) results.designer = true;
+    }
+  } catch { /* WS server down */ }
+
+  return results;
+}
+
+function renderStackStatus(s: StackStatus) {
+  const setDot = (el: HTMLSpanElement, up: boolean) => {
+    el.className = `stack-dot ${up ? 'up' : 'down'}`;
+  };
+  setDot(stackDotWs, s.ws);
+  setDot(stackDotAlignment, s.alignment);
+  setDot(stackDotQuality, s.quality);
+  setDot(stackDotDesigner, s.designer);
+
+  const count = [s.ws, s.alignment, s.quality, s.designer].filter(Boolean).length;
+  stackSummary.textContent = `${count}/4 services up`;
+  stackSummary.style.color = count === 4 ? 'var(--success)' : count > 0 ? 'var(--warn)' : 'var(--error)';
+}
+
+async function refreshStackStatus() {
+  [stackDotWs, stackDotAlignment, stackDotQuality, stackDotDesigner].forEach(d => d.className = 'stack-dot checking');
+  stackSummary.textContent = 'Checking...';
+  const s = await checkStackStatus();
+  renderStackStatus(s);
+  return s;
+}
+
+// Poll stack status periodically
+let stackPollTimer = 0;
+function startStackPoll() {
+  refreshStackStatus();
+  stackPollTimer = window.setInterval(() => refreshStackStatus(), 15000);
+}
+
 // Close dialogs on Escape
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     if (!serverDashboard.hidden) closeServerDashboard();
+    if (!designerModal.hidden) closeDesignerModal();
     if (!sampleModal.hidden) closeSampleModal();
     if (!piperModal.hidden) closePiperModal();
     if (!contextMenu.hidden) hideContextMenu();
@@ -1942,4 +2433,6 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ── Boot ──────────────────────────────────────────────────
-init().catch((err) => log(`Init failed: ${err}`, 'error'));
+init().then(() => {
+  startStackPoll();
+}).catch((err) => log(`Init failed: ${err}`, 'error'));

@@ -12,6 +12,14 @@
       <h1>WebVox</h1>
       <p class="subtitle">OS-level text-to-speech with audio capture</p>
       <div id="system-info-bar" class="system-info-bar" hidden></div>
+      <div id="stack-status-bar" class="stack-status-bar">
+        <span class="stack-label">Stack:</span>
+        <span class="stack-dot" id="stack-dot-ws" title="WebSocket Server (21740)"></span>
+        <span class="stack-dot" id="stack-dot-alignment" title="Alignment Server (21747)"></span>
+        <span class="stack-dot" id="stack-dot-quality" title="Quality Server (21748)"></span>
+        <span class="stack-dot" id="stack-dot-designer" title="Voice Designer (21749)"></span>
+        <span class="stack-summary" id="stack-summary">Checking...</span>
+      </div>
       <button type="button" id="server-dashboard-btn" class="server-dashboard-btn" title="Server Dashboard">Servers</button>
     </header>
 
@@ -42,6 +50,7 @@
           <div class="voice-picker-actions">
             <div id="voice-selected-display" class="voice-selected-display">No voice selected</div>
             <button type="button" id="voice-sample-btn" class="voice-sample-btn" title="Record or upload a voice sample for cloning">Voice Cloning</button>
+            <button type="button" id="voice-designer-btn" class="voice-designer-btn" title="Design a custom voice from a text description">Voice Designer</button>
             <button type="button" id="piper-download-btn" class="piper-download-btn" title="Download Piper neural voices">+ Piper Voices</button>
           </div>
         </div>
@@ -234,6 +243,75 @@
       <div class="modal-footer">
         <span id="sample-status" class="sample-status"></span>
         <button type="button" id="sample-modal-close" class="modal-btn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Voice Designer modal -->
+  <div id="designer-modal" class="modal-overlay" hidden>
+    <div class="modal designer-modal">
+      <div class="modal-header">
+        <h2>Voice Designer</h2>
+      </div>
+      <div class="designer-modal-body">
+        <p class="designer-description">Design a custom voice by describing it in natural language, or blend multiple voice samples into a new composite voice.</p>
+
+        <div class="designer-section">
+          <h3>Design from Description</h3>
+          <textarea id="designer-description" rows="3" placeholder="Describe the voice you want, e.g. 'A warm female voice with a calm tone and moderate pace'"></textarea>
+          <div class="designer-preview-row">
+            <input type="text" id="designer-preview-text" placeholder="Preview text..." value="Hello, this is a preview of the designed voice." />
+            <button type="button" id="designer-generate-btn" class="designer-generate-btn">Generate</button>
+          </div>
+          <div id="designer-preview-section" class="designer-preview-section" hidden>
+            <audio id="designer-preview-player" controls></audio>
+            <button type="button" id="designer-save-btn" class="designer-save-btn">Save as Profile</button>
+          </div>
+        </div>
+
+        <div class="designer-section">
+          <h3>Blend Voice Samples</h3>
+          <p class="designer-blend-hint">Select 2+ voice samples and adjust weights to create a blended voice.</p>
+          <div id="designer-blend-list" class="designer-blend-list">
+            <div class="designer-blend-empty">Upload voice samples in the Voice Cloning panel first.</div>
+          </div>
+          <button type="button" id="designer-blend-btn" class="designer-blend-btn" disabled>Blend Selected</button>
+          <div id="designer-blend-result" class="designer-blend-result" hidden>
+            <span class="blend-success">Blend complete!</span>
+            <button type="button" id="designer-blend-save-btn" class="designer-save-btn">Save Blend as Profile</button>
+          </div>
+        </div>
+
+        <div class="designer-section">
+          <h3>Saved Voice Profiles</h3>
+          <div id="designer-profiles-list" class="designer-profiles-list">
+            <div class="designer-profiles-empty">No voice profiles saved yet.</div>
+          </div>
+        </div>
+
+        <div class="designer-section designer-test-section">
+          <h3>Gemini AI Integration</h3>
+          <div id="gemini-status-badge" class="gemini-status-badge gemini-checking">
+            <span class="gemini-dot"></span>
+            <span class="gemini-label">Checking Gemini...</span>
+          </div>
+          <div class="gemini-test-zone">
+            <textarea id="gemini-test-input" rows="2" placeholder="Try: 'the guy from Allstate commercials' or 'a voice like honey dripping over warm bread'"></textarea>
+            <div class="gemini-test-actions">
+              <button type="button" id="gemini-interpret-btn" class="gemini-btn" disabled>Interpret</button>
+              <button type="button" id="gemini-identify-btn" class="gemini-btn" disabled>Identify</button>
+              <button type="button" id="gemini-decompose-btn" class="gemini-btn" disabled>Decompose</button>
+            </div>
+            <div id="gemini-test-result" class="gemini-test-result" hidden></div>
+          </div>
+          <p class="designer-blend-hint" style="margin-top:10px;">
+            <a href="http://localhost:5195" target="_blank" class="test-link-btn" id="open-test-workbench">Open Full Test Workbench</a>
+          </p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <span id="designer-status" class="designer-status"></span>
+        <button type="button" id="designer-modal-close" class="modal-btn">Close</button>
       </div>
     </div>
   </div>

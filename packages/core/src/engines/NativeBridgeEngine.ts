@@ -7,8 +7,16 @@ import type {
   NativeWordBoundary,
   NativeVoiceDescriptor,
   NativeQualityScore,
+  NativeVoiceDesignResult,
+  NativeVoiceBlendResult,
+  NativeVoiceProfileSummary,
+  NativeVoiceProfileResult,
   WordTimestamp,
   QualityScore,
+  VoiceDesignResult,
+  VoiceBlendResult,
+  VoiceProfileSummary,
+  VoiceProfileResult,
   SystemInfo,
   VoiceValidation,
   PiperCatalogVoice,
@@ -322,6 +330,110 @@ export class NativeBridgeEngine implements EngineAdapter {
     }
 
     return { samples, sampleRate, channels, wordTimestamps, totalDurationMs, qualityScore };
+  }
+
+  async designVoice(description: string, previewText?: string): Promise<VoiceDesignResult> {
+    if (!this.transport) throw new Error('Not initialized');
+    const response = await this.transport.send({
+      type: 'design_voice',
+      id: crypto.randomUUID(),
+      description,
+      preview_text: previewText ?? 'Hello, this is a preview of the designed voice.',
+    });
+    if (response.type === 'error') {
+      throw new Error((response as unknown as { message: string }).message ?? 'Voice design failed');
+    }
+    const r = response as unknown as NativeVoiceDesignResult;
+    return {
+      id: r.id,
+      success: r.success,
+      audioBase64: r.audio_base64,
+      sampleRate: r.sample_rate,
+      durationMs: r.duration_ms,
+      description: r.description,
+      error: r.error,
+    };
+  }
+
+  async blendVoices(
+    audioSamplesBase64: string[],
+    sampleRates: number[],
+    weights?: number[],
+  ): Promise<VoiceBlendResult> {
+    if (!this.transport) throw new Error('Not initialized');
+    const response = await this.transport.send({
+      type: 'blend_voices',
+      id: crypto.randomUUID(),
+      audio_samples_base64: audioSamplesBase64,
+      sample_rates: sampleRates,
+      weights: weights ?? [],
+    });
+    if (response.type === 'error') {
+      throw new Error((response as unknown as { message: string }).message ?? 'Voice blending failed');
+    }
+    const r = response as unknown as NativeVoiceBlendResult;
+    return {
+      id: r.id,
+      success: r.success,
+      embedding: r.embedding,
+      dimensions: r.dimensions,
+      weightsNormalized: r.weights_normalized,
+      error: r.error,
+    };
+  }
+
+  async listVoiceProfiles(): Promise<VoiceProfileSummary[]> {
+    if (!this.transport) throw new Error('Not initialized');
+    const response = await this.transport.send({ type: 'list_voice_profiles' });
+    if (response.type === 'error') {
+      throw new Error((response as unknown as { message: string }).message ?? 'Failed to list profiles');
+    }
+    const profiles = (response as unknown as { profiles: NativeVoiceProfileSummary[] }).profiles ?? [];
+    return profiles.map(p => ({
+      id: p.id,
+      name: p.name,
+      description: p.description,
+      sampleRate: p.sample_rate,
+      hasEmbedding: p.has_embedding,
+      hasReferenceAudio: p.has_reference_audio,
+      createdAt: p.created_at,
+    }));
+  }
+
+  async saveVoiceProfile(
+    name: string,
+    description: string,
+    embedding?: number[],
+    referenceAudioBase64?: string,
+    sampleRate?: number,
+  ): Promise<VoiceProfileResult> {
+    if (!this.transport) throw new Error('Not initialized');
+    const response = await this.transport.send({
+      type: 'save_voice_profile',
+      name,
+      description,
+      embedding,
+      reference_audio_base64: referenceAudioBase64,
+      sample_rate: sampleRate ?? 22050,
+    });
+    if (response.type === 'error') {
+      throw new Error((response as unknown as { message: string }).message ?? 'Failed to save profile');
+    }
+    const r = response as unknown as NativeVoiceProfileResult;
+    return { success: r.success, profileId: r.profile_id, error: r.error };
+  }
+
+  async deleteVoiceProfile(profileId: string): Promise<VoiceProfileResult> {
+    if (!this.transport) throw new Error('Not initialized');
+    const response = await this.transport.send({
+      type: 'delete_voice_profile',
+      profile_id: profileId,
+    });
+    if (response.type === 'error') {
+      throw new Error((response as unknown as { message: string }).message ?? 'Failed to delete profile');
+    }
+    const r = response as unknown as NativeVoiceProfileResult;
+    return { success: r.success, profileId: r.profile_id, error: r.error };
   }
 
   cancel(): void {

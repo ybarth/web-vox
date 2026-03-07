@@ -1,0 +1,2070 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voice Designer — Phase 3 Test Workbench</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root { --bg: #0f0f1a; --card: #1a1a2e; --border: #2a2a40; --accent: #63b3db;
+        --text: #e0e0e0; --dim: #777; --pass: #4caf50; --fail: #f44336; --warn: #ff9800; --radius: 8px; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+       background: var(--bg); color: var(--text); min-height: 100vh; padding: 24px; max-width: 800px; margin: 0 auto; }
+h1 { font-size: 1.4rem; margin-bottom: 4px; }
+.subtitle { color: var(--dim); font-size: 0.85rem; margin-bottom: 16px; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
+h2 { font-size: 1rem; color: var(--accent); margin-bottom: 10px; }
+h3 { font-size: 0.85rem; color: var(--accent); margin: 12px 0 6px; }
+
+/* Stack bar */
+.stack-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding: 8px 12px;
+             background: rgba(255,255,255,0.04); border-radius: var(--radius); flex-wrap: wrap; }
+.stack-label { color: var(--dim); font-weight: 500; font-size: 0.8rem; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: #555; display: inline-block; }
+.dot.up { background: var(--pass); } .dot.down { background: var(--fail); } .dot.checking { background: var(--warn); }
+.stack-name { font-size: 0.75rem; color: var(--dim); }
+.stack-status { font-size: 0.8rem; margin-left: auto; }
+
+/* Model status */
+.model-status-bar { display: flex; align-items: center; gap: 12px; padding: 6px 12px;
+                    background: rgba(255,255,255,0.02); border-radius: 4px; margin-bottom: 4px; }
+.model-name { font-size: 0.8rem; color: var(--dim); min-width: 100px; }
+.model-state { font-size: 0.75rem; padding: 2px 8px; border-radius: 10px; }
+.model-state.idle { background: rgba(255,255,255,0.05); color: var(--dim); }
+.model-state.loading { background: rgba(255,152,0,0.15); color: var(--warn); }
+.model-state.ready { background: rgba(76,175,80,0.15); color: var(--pass); }
+.model-state.error { background: rgba(244,67,54,0.15); color: var(--fail); }
+.model-stage { font-size: 0.75rem; color: var(--dim); flex: 1; }
+.model-progress { width: 100px; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; }
+.model-progress-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.3s; }
+.preload-btn { padding: 4px 14px; font-size: 0.75rem; background: rgba(108,99,255,0.15);
+               border: 1px solid rgba(108,99,255,0.3); border-radius: 4px; color: #6c63ff;
+               cursor: pointer; margin-top: 6px; }
+.preload-btn:hover { background: rgba(108,99,255,0.25); }
+.preload-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Tests */
+.test-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+            background: rgba(255,255,255,0.02); border-radius: 4px; margin-bottom: 4px; }
+.test-label { flex: 1; font-size: 0.85rem; }
+.test-dot { width: 10px; height: 10px; border-radius: 50%; background: #555; flex-shrink: 0; }
+.test-dot.pass { background: var(--pass); } .test-dot.fail { background: var(--fail); }
+.test-dot.running { background: var(--warn); animation: pulse 0.8s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+.test-result { font-size: 0.75rem; color: var(--dim); min-width: 140px; text-align: right; }
+.test-btn { padding: 4px 14px; font-size: 0.75rem; background: rgba(99,179,219,0.15);
+            border: 1px solid rgba(99,179,219,0.3); border-radius: 4px; color: var(--accent);
+            cursor: pointer; flex-shrink: 0; }
+.test-btn:hover { background: rgba(99,179,219,0.25); }
+.test-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.run-all { padding: 8px 20px; background: #6c63ff; border: none; border-radius: var(--radius);
+           color: #fff; cursor: pointer; font-size: 0.85rem; margin: 10px 0; }
+.run-all:hover { background: #5a52e0; } .run-all:disabled { opacity: 0.5; }
+.log { max-height: 200px; overflow-y: auto; font-family: 'SF Mono','Fira Code',monospace;
+       font-size: 0.72rem; color: var(--dim); background: rgba(0,0,0,0.4);
+       border-radius: 4px; padding: 8px; margin-top: 8px; }
+.log .pass { color: var(--pass); } .log .fail { color: var(--fail); } .log .info { color: var(--dim); }
+.summary-bar { padding: 10px 12px; border-radius: var(--radius); margin-top: 12px; font-size: 0.85rem; font-weight: 600; text-align: center; }
+.summary-bar.all-pass { background: rgba(76,175,80,0.15); color: var(--pass); border: 1px solid rgba(76,175,80,0.3); }
+.summary-bar.some-fail { background: rgba(244,67,54,0.15); color: var(--fail); border: 1px solid rgba(244,67,54,0.3); }
+
+/* Design section */
+.design-section textarea, .design-section input[type="text"] {
+  width: 100%; padding: 8px; background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text); font-size: 0.85rem; margin-bottom: 6px; }
+.design-row { display: flex; gap: 8px; align-items: center; }
+.design-row input { flex: 1; }
+.gen-btn { padding: 8px 18px; background: #6c63ff; border: none; border-radius: var(--radius);
+           color: #fff; cursor: pointer; font-size: 0.85rem; }
+.gen-btn:disabled { opacity: 0.5; }
+.preview-section { margin-top: 8px; display: flex; align-items: center; gap: 10px; }
+.preview-section audio { flex: 1; height: 32px; }
+.hidden { display: none !important; }
+
+/* Reference audio */
+.ref-section { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.ref-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ref-controls input[type="file"] { font-size: 0.8rem; color: var(--dim); }
+.ref-controls button { padding: 6px 14px; font-size: 0.8rem; background: rgba(99,179,219,0.15);
+                        border: 1px solid rgba(99,179,219,0.3); border-radius: 4px;
+                        color: var(--accent); cursor: pointer; }
+.ref-controls button:hover { background: rgba(99,179,219,0.25); }
+.ref-controls button:disabled { opacity: 0.4; cursor: not-allowed; }
+.ref-status { font-size: 0.75rem; color: var(--dim); margin-top: 4px; }
+.ref-player { margin-top: 6px; width: 100%; height: 32px; }
+.ref-embedding-info { font-size: 0.75rem; color: var(--pass); margin-top: 4px; }
+
+/* Quality feedback */
+.quality-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; margin-top: 8px; }
+.quality-metric { padding: 8px; background: rgba(255,255,255,0.03); border-radius: 4px; text-align: center; }
+.quality-metric .metric-label { font-size: 0.7rem; color: var(--dim); text-transform: uppercase; }
+.quality-metric .metric-value { font-size: 1.1rem; font-weight: 600; margin-top: 2px; }
+.quality-metric .metric-value.good { color: var(--pass); }
+.quality-metric .metric-value.ok { color: var(--warn); }
+.quality-metric .metric-value.bad { color: var(--fail); }
+.attempt-log { font-size: 0.75rem; color: var(--dim); margin-top: 6px; padding: 6px 8px;
+               background: rgba(0,0,0,0.3); border-radius: 4px; max-height: 120px; overflow-y: auto; }
+.attempt-row { padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.attempt-row:last-child { border: none; }
+
+/* Voice search */
+.search-section { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.search-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.search-controls input[type="text"] { flex: 1; min-width: 200px; padding: 8px; background: var(--bg); border: 1px solid var(--border);
+                          border-radius: var(--radius); color: var(--text); font-size: 0.85rem; }
+.search-mode-toggle { display: flex; gap: 6px; font-size: 0.78rem; color: var(--dim); white-space: nowrap; }
+.search-mode-toggle label { display: flex; align-items: center; gap: 2px; cursor: pointer; }
+.search-mode-toggle input[type="radio"] { margin: 0; }
+.search-btn { padding: 8px 18px; background: #6c63ff; border: none; border-radius: var(--radius);
+              color: #fff; cursor: pointer; font-size: 0.85rem; white-space: nowrap; }
+.search-btn:disabled { opacity: 0.5; }
+.search-results { margin-top: 10px; }
+.search-group-header { padding: 6px 10px; margin: 10px 0 4px; background: rgba(108,99,255,0.12);
+                       border-radius: 4px; font-size: 0.82rem; font-weight: 600; color: #9f99ff; }
+.search-result-item { padding: 10px 12px; background: rgba(255,255,255,0.02); border-radius: 4px;
+                       margin-bottom: 6px; }
+.sr-row { display: flex; align-items: center; gap: 10px; }
+.sr-title { flex: 1; font-size: 0.8rem; }
+.sr-meta { font-size: 0.7rem; color: var(--dim); }
+.sr-source { font-size: 0.65rem; color: var(--dim); background: rgba(255,255,255,0.05); padding: 1px 6px; border-radius: 3px; }
+.sr-emb { font-size: 0.7rem; color: var(--pass); }
+.sr-err { font-size: 0.7rem; color: var(--fail); }
+.sr-desc { font-size: 0.72rem; color: var(--dim); margin-top: 4px; font-style: italic; }
+.sr-preview { margin-top: 6px; display: flex; align-items: center; gap: 8px; }
+.sr-preview audio { height: 28px; flex: 1; }
+.sr-actions { display: flex; gap: 6px; margin-top: 6px; }
+.sr-actions button { padding: 4px 12px; font-size: 0.75rem; border-radius: 4px; cursor: pointer; }
+.sr-use-btn { background: rgba(76,175,80,0.15); border: 1px solid rgba(76,175,80,0.3); color: var(--pass); }
+.sr-use-btn:hover { background: rgba(76,175,80,0.25); }
+.sr-replace-btn { background: rgba(255,152,0,0.15); border: 1px solid rgba(255,152,0,0.3); color: var(--warn); }
+.sr-replace-btn:hover { background: rgba(255,152,0,0.25); }
+.search-status { font-size: 0.8rem; color: var(--dim); margin-top: 6px; }
+.search-progress { margin-top: 10px; }
+.search-progress-log { max-height: 180px; overflow-y: auto; font-size: 0.75rem; line-height: 1.5;
+                       padding: 8px 10px; background: rgba(0,0,0,0.25); border-radius: 4px;
+                       font-family: monospace; color: var(--dim); }
+.search-progress-log .prog-line { display: flex; gap: 6px; align-items: baseline; }
+.search-progress-log .prog-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+                                  flex-shrink: 0; margin-top: 4px; }
+.search-progress-log .prog-dot.ok { background: var(--pass); }
+.search-progress-log .prog-dot.work { background: var(--warn); }
+.search-progress-log .prog-dot.err { background: var(--fail); }
+.search-progress-log .prog-dot.info { background: #6c63ff; }
+.search-progress-bar-wrap { height: 4px; background: rgba(255,255,255,0.08); border-radius: 2px;
+                            margin-top: 6px; overflow: hidden; }
+.search-progress-bar { height: 100%; width: 0%; background: linear-gradient(90deg, #6c63ff, #00e5a0);
+                       border-radius: 2px; transition: width 0.3s ease; }
+.search-progress-status { font-size: 0.78rem; color: var(--dim); margin-top: 4px; }
+
+/* Identify step indicators */
+.identify-steps { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.id-step { font-size: 0.75rem; color: var(--dim); padding: 2px 8px; border-radius: 10px;
+           background: rgba(255,255,255,0.04); transition: all 0.3s; }
+.id-step.active { color: #fff; background: rgba(108,99,255,0.4); animation: id-pulse 1.2s ease-in-out infinite; }
+.id-step.done { color: var(--pass); background: rgba(0,229,160,0.12); animation: none; }
+.id-step-arrow { color: var(--dim); font-size: 0.7rem; }
+@keyframes id-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+.id-progress-bar { transition: width 0.4s ease; }
+.gen-progress { margin-top: 8px; margin-bottom: 8px; }
+
+/* Identify results */
+.identify-results { margin-top: 10px; }
+.identity-card { padding: 12px 14px; background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+                 border-radius: 6px; margin-bottom: 8px; }
+.identity-card .id-header { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 8px; }
+.identity-card .id-image { width: 64px; height: 64px; border-radius: 6px; object-fit: cover;
+                           border: 1px solid var(--border); flex-shrink: 0; }
+.identity-card .id-header-text { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+.identity-card .id-name { font-size: 1rem; font-weight: 600; color: var(--text); }
+.identity-card .id-type { font-size: 0.7rem; padding: 2px 8px; border-radius: 10px;
+                          background: rgba(108,99,255,0.2); color: #9f99ff; width: fit-content; }
+.identity-card .id-summary { font-size: 0.8rem; color: var(--dim); line-height: 1.4; margin-bottom: 8px; }
+.identity-card .id-known-for { font-size: 0.75rem; color: var(--dim); margin-bottom: 8px; }
+.identity-card .id-known-for span { color: var(--accent); }
+.identity-card .id-samples { font-size: 0.78rem; color: var(--dim); margin-bottom: 10px; }
+.identity-card .id-samples strong { color: var(--accent); }
+.identity-card .id-samples ul { margin: 4px 0 0 16px; padding: 0; }
+.identity-card .id-samples li { margin-bottom: 3px; }
+.identity-card .id-samples .sample-title { color: var(--text); }
+.identity-card .id-samples .sample-why { color: var(--dim); font-style: italic; font-size: 0.72rem; }
+.identity-card .id-actions { display: flex; gap: 8px; margin-top: 4px; }
+.identity-card .id-confirm-btn { padding: 6px 16px; background: #6c63ff; border: none;
+                                  border-radius: 4px; color: #fff; cursor: pointer;
+                                  font-size: 0.82rem; }
+.identity-card .id-confirm-btn:hover { background: #5a52e0; }
+.identity-card .id-wrong-btn { padding: 6px 16px; background: transparent; border: 1px solid var(--border);
+                                border-radius: 4px; color: var(--dim); cursor: pointer;
+                                font-size: 0.82rem; }
+.identity-card .id-wrong-btn:hover { border-color: var(--warn); color: var(--warn); }
+
+/* Alternatives panel */
+.alternatives-panel { margin-top: 10px; padding: 10px; background: rgba(255,200,50,0.04);
+                      border: 1px solid rgba(255,200,50,0.2); border-radius: 6px; }
+.alt-card { padding: 8px 12px; margin-bottom: 4px; background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border); border-radius: 4px; cursor: pointer;
+            display: flex; flex-direction: column; gap: 2px; }
+.alt-card:hover { border-color: var(--accent); background: rgba(108,99,255,0.08); }
+.alt-card .alt-name { font-size: 0.85rem; color: var(--text); font-weight: 500; }
+.alt-card .alt-desc { font-size: 0.72rem; color: var(--dim); }
+
+/* Confirmed subject samples hint */
+.cs-samples-hint { font-size: 0.72rem; color: var(--dim); font-style: italic; margin-top: 2px; }
+
+/* Confirmed subject banner */
+.confirmed-subject { padding: 10px 14px; background: rgba(0,229,160,0.08); border: 1px solid rgba(0,229,160,0.3);
+                     border-radius: 6px; margin-bottom: 10px; display: flex; justify-content: space-between;
+                     align-items: center; }
+.confirmed-subject .cs-name { font-weight: 600; color: var(--pass); }
+.confirmed-subject .cs-change { font-size: 0.75rem; color: var(--dim); cursor: pointer;
+                                 text-decoration: underline; }
+
+/* Clips grid */
+.clips-grid { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.clip-card { padding: 10px 12px; background: rgba(255,255,255,0.02); border: 1px solid var(--border);
+             border-radius: 4px; }
+.clip-card.clip-ready { border-color: rgba(0,229,160,0.3); }
+.clip-card.clip-failed { border-color: rgba(255,68,68,0.3); opacity: 0.6; }
+.clip-card .clip-header { display: flex; justify-content: space-between; align-items: center; gap: 8px;
+                          margin-bottom: 6px; }
+.clip-card .clip-title { font-size: 0.82rem; color: var(--text); flex: 1; }
+.clip-card .clip-title a { color: var(--accent); text-decoration: none; }
+.clip-card .clip-meta { font-size: 0.7rem; color: var(--dim); white-space: nowrap; }
+.clip-card .clip-score { font-size: 0.68rem; padding: 1px 6px; border-radius: 8px;
+                         background: rgba(108,99,255,0.15); color: #9f99ff; }
+.clip-card .clip-audio { width: 100%; margin: 4px 0; }
+.clip-card .clip-iso { font-size: 0.68rem; color: var(--dim); }
+.clip-card .clip-actions { display: flex; gap: 6px; margin-top: 6px; }
+.clip-card .clip-add-btn { padding: 4px 12px; background: var(--pass); border: none;
+                           border-radius: 3px; color: #000; cursor: pointer;
+                           font-size: 0.78rem; font-weight: 600; }
+.clip-card .clip-add-btn:hover { opacity: 0.85; }
+.clips-actions { margin-top: 10px; display: flex; gap: 8px; }
+.search-classification { font-size: 0.72rem; color: var(--dim); margin-top: 4px; padding: 4px 8px;
+                          background: rgba(255,255,255,0.03); border-radius: 4px; }
+
+/* Voice Palette */
+.palette-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.palette-count { font-size: 0.75rem; color: var(--dim); }
+.palette-empty { font-size: 0.8rem; color: var(--dim); padding: 12px; text-align: center;
+                 background: rgba(255,255,255,0.02); border-radius: 4px; }
+.palette-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+                background: rgba(255,255,255,0.02); border-radius: 4px; margin-bottom: 4px; }
+.palette-item .pi-label { flex: 1; font-size: 0.8rem; }
+.palette-item .pi-weight-group { display: flex; align-items: center; gap: 4px; }
+.palette-item .pi-weight-label { font-size: 0.7rem; color: var(--dim); }
+.palette-item input[type="range"] { width: 80px; height: 4px; accent-color: var(--accent); }
+.palette-item .pi-weight-val { font-size: 0.75rem; color: var(--accent); min-width: 28px; text-align: right; }
+.palette-item .pi-remove { background: none; border: none; color: var(--fail); cursor: pointer;
+                            font-size: 0.9rem; padding: 2px 6px; opacity: 0.6; }
+.palette-item .pi-remove:hover { opacity: 1; }
+.palette-item audio { height: 24px; max-width: 160px; }
+.palette-actions { display: flex; gap: 8px; margin-top: 8px; }
+
+/* Anatomy layer */
+.anatomy-toggle { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.anatomy-toggle label { font-size: 0.8rem; color: var(--dim); cursor: pointer; }
+.anatomy-toggle input[type="checkbox"] { accent-color: var(--accent); }
+.anatomy-auto { margin-top: 8px; }
+.anatomy-auto-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 6px; margin-top: 6px; }
+.anatomy-chip { padding: 4px 8px; background: rgba(99,179,219,0.08); border: 1px solid rgba(99,179,219,0.15);
+                border-radius: 4px; font-size: 0.72rem; }
+.anatomy-chip .ac-label { color: var(--accent); font-weight: 500; }
+.anatomy-chip .ac-value { color: var(--text); margin-left: 4px; }
+.anatomy-advanced { margin-top: 10px; }
+.anatomy-element { margin-bottom: 8px; }
+.anatomy-element label { font-size: 0.75rem; color: var(--accent); display: block; margin-bottom: 2px; }
+.anatomy-element .ae-hint { font-size: 0.65rem; color: var(--dim); margin-bottom: 3px; }
+.anatomy-element input[type="text"] { width: 100%; padding: 5px 8px; background: var(--bg);
+  border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 0.8rem; }
+.anatomy-element input::placeholder { color: #555; }
+.compose-btn { padding: 10px 24px; background: linear-gradient(135deg, #6c63ff, #63b3db);
+               border: none; border-radius: var(--radius); color: #fff; cursor: pointer;
+               font-size: 0.9rem; font-weight: 600; margin-top: 12px; }
+.compose-btn:hover { opacity: 0.9; } .compose-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.compose-result { margin-top: 10px; }
+.compose-prompt { font-size: 0.75rem; color: var(--dim); padding: 6px 8px;
+                  background: rgba(0,0,0,0.3); border-radius: 4px; margin-top: 6px;
+                  font-family: 'SF Mono','Fira Code',monospace; white-space: pre-wrap; }
+#suggest-description:hover { background: rgba(99,179,219,0.15); }
+.clone-ready-badge { display: inline-block; font-size: 0.7rem; padding: 2px 8px;
+                     border-radius: 10px; margin-left: 6px; }
+.clone-ready-badge.ready { background: rgba(76,175,80,0.15); color: var(--pass); }
+.clone-ready-badge.short { background: rgba(255,152,0,0.15); color: var(--warn); }
+</style>
+</head>
+<body>
+<h1>Voice Designer — Phase 3 Test Workbench</h1>
+<p class="subtitle">Port 5195 — standalone test UI for voice designer capabilities</p>
+
+<!-- Stack status -->
+<div class="stack-bar" id="stack-bar">
+  <span class="stack-label">Stack:</span>
+  <span class="dot checking" id="dot-ws"></span><span class="stack-name">WS:21740</span>
+  <span class="dot checking" id="dot-align"></span><span class="stack-name">Align:21747</span>
+  <span class="dot checking" id="dot-quality"></span><span class="stack-name">Quality:21748</span>
+  <span class="dot checking" id="dot-designer"></span><span class="stack-name">Designer:21749</span>
+  <span class="stack-status" id="stack-status">Checking...</span>
+</div>
+
+<!-- Model loading status -->
+<div class="card">
+  <h2>Model Status</h2>
+  <div class="model-status-bar" id="ms-parler">
+    <span class="model-name">Parler-TTS</span>
+    <span class="model-state idle" id="ms-parler-state">idle</span>
+    <span class="model-stage" id="ms-parler-stage">Not loaded</span>
+    <div class="model-progress"><div class="model-progress-fill" id="ms-parler-progress" style="width:0%"></div></div>
+  </div>
+  <div class="model-status-bar" id="ms-encoder">
+    <span class="model-name">Speaker Encoder</span>
+    <span class="model-state idle" id="ms-encoder-state">idle</span>
+    <span class="model-stage" id="ms-encoder-stage">Not loaded</span>
+    <div class="model-progress"><div class="model-progress-fill" id="ms-encoder-progress" style="width:0%"></div></div>
+  </div>
+  <div class="model-status-bar" id="ms-gemini">
+    <span class="model-name">Gemini AI</span>
+    <span class="model-state idle" id="ms-gemini-state">checking</span>
+    <span class="model-stage" id="ms-gemini-stage">Checking...</span>
+  </div>
+  <button class="preload-btn" id="preload-btn" onclick="preloadModels()">Preload All Models</button>
+</div>
+
+<!-- Tests -->
+<div class="card">
+  <h2>Automated Tests</h2>
+  <div id="tests">
+    <div class="test-row" data-test="health">
+      <span class="test-label">1. Server Health</span>
+      <span class="test-dot" id="td-health"></span>
+      <span class="test-result" id="tr-health">--</span>
+      <button class="test-btn" onclick="runOne('health')">Test</button>
+    </div>
+    <div class="test-row" data-test="profiles">
+      <span class="test-label">2. Profile Save/List/Delete</span>
+      <span class="test-dot" id="td-profiles"></span>
+      <span class="test-result" id="tr-profiles">--</span>
+      <button class="test-btn" onclick="runOne('profiles')">Test</button>
+    </div>
+    <div class="test-row" data-test="encoder">
+      <span class="test-label">3. Speaker Encoder</span>
+      <span class="test-dot" id="td-encoder"></span>
+      <span class="test-result" id="tr-encoder">--</span>
+      <button class="test-btn" onclick="runOne('encoder')">Test</button>
+    </div>
+    <div class="test-row" data-test="blend">
+      <span class="test-label">4. Embedding Blend</span>
+      <span class="test-dot" id="td-blend"></span>
+      <span class="test-result" id="tr-blend">--</span>
+      <button class="test-btn" onclick="runOne('blend')">Test</button>
+    </div>
+    <div class="test-row" data-test="parler">
+      <span class="test-label">5. Parler-TTS Voice Design</span>
+      <span class="test-dot" id="td-parler"></span>
+      <span class="test-result" id="tr-parler">--</span>
+      <button class="test-btn" onclick="runOne('parler')">Test</button>
+    </div>
+    <div class="test-row" data-test="ref_design">
+      <span class="test-label">6. Design with Reference Audio</span>
+      <span class="test-dot" id="td-ref_design"></span>
+      <span class="test-result" id="tr-ref_design">--</span>
+      <button class="test-btn" onclick="runOne('ref_design')">Test</button>
+    </div>
+    <div class="test-row" data-test="smart_design">
+      <span class="test-label">7. Smart Design (quality self-analysis)</span>
+      <span class="test-dot" id="td-smart_design"></span>
+      <span class="test-result" id="tr-smart_design">--</span>
+      <button class="test-btn" onclick="runOne('smart_design')">Test</button>
+    </div>
+    <div class="test-row" data-test="voice_search">
+      <span class="test-label">8. Voice Reference Search (YouTube)</span>
+      <span class="test-dot" id="td-voice_search"></span>
+      <span class="test-result" id="tr-voice_search">--</span>
+      <button class="test-btn" onclick="runOne('voice_search')">Test</button>
+    </div>
+  </div>
+  <button class="run-all" id="run-all-btn" onclick="runAll()">Run All Tests</button>
+  <div id="summary" class="hidden"></div>
+  <div class="log" id="log"></div>
+</div>
+
+<!-- Interactive design -->
+<div class="card design-section">
+  <h2>Interactive Voice Design</h2>
+  <h3>Text-Prompted (Parler-TTS)</h3>
+  <textarea id="desc" rows="2" placeholder="Describe the voice: 'A warm female voice with a calm tone and slow pace'"></textarea>
+  <div class="design-row">
+    <input type="text" id="preview-text" value="Hello, this is a preview of the designed voice." />
+    <button class="gen-btn" id="gen-btn" onclick="generateVoice()">Generate</button>
+  </div>
+  <div class="gen-progress hidden" id="gen-progress">
+    <div class="identify-steps">
+      <span class="id-step active" id="gen-step-model">Loading Model</span>
+      <span class="id-step-arrow">→</span>
+      <span class="id-step" id="gen-step-gen">Generating</span>
+    </div>
+    <div class="search-progress-bar-wrap">
+      <div class="search-progress-bar id-progress-bar" id="gen-bar"></div>
+    </div>
+    <div class="search-progress-status" id="gen-progress-status">Loading Parler-TTS model...</div>
+  </div>
+  <div class="preview-section hidden" id="preview-section">
+    <audio id="preview-audio" controls></audio>
+    <span id="gen-status" style="font-size:0.8rem;color:var(--dim)"></span>
+  </div>
+
+  <!-- Reference audio upload -->
+  <div class="ref-section">
+    <h3>Reference Audio</h3>
+    <p style="font-size:0.8rem;color:var(--dim);margin-bottom:8px;">Upload a voice sample to extract a speaker embedding. This can be saved as a voice profile for blending or future use.</p>
+    <div class="ref-controls">
+      <input type="file" id="ref-file" accept="audio/*" />
+      <button id="ref-upload-btn" onclick="uploadReference()" disabled>Extract Embedding</button>
+      <button id="ref-palette-btn" onclick="addUploadToPalette()" disabled>Add to Palette</button>
+      <button id="ref-design-btn" onclick="designWithReference()" disabled>Generate with Description + Reference</button>
+    </div>
+    <div class="ref-status" id="ref-status"></div>
+    <audio class="ref-player hidden" id="ref-player" controls></audio>
+    <div class="ref-embedding-info hidden" id="ref-embedding-info"></div>
+  </div>
+</div>
+
+<!-- Smart Design (with quality analysis) -->
+<div class="card design-section">
+  <h2>Smart Design (Quality Self-Analysis)</h2>
+  <p style="font-size:0.8rem;color:var(--dim);margin-bottom:8px;">Generates voice audio and analyzes it with the quality server (Whisper ASR, UTMOS MOS, prosody). Retries if quality is below threshold.</p>
+  <textarea id="smart-desc" rows="2" placeholder="Describe the voice: 'A deep, authoritative male voice with clear enunciation'"></textarea>
+  <div class="design-row">
+    <input type="text" id="smart-preview-text" value="The quick brown fox jumps over the lazy dog." />
+    <label style="font-size:0.75rem;color:var(--dim);white-space:nowrap;">Max tries:
+      <select id="smart-max-attempts" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px;">
+        <option value="1">1</option><option value="2">2</option><option value="3" selected>3</option><option value="5">5</option>
+      </select>
+    </label>
+    <button class="gen-btn" id="smart-gen-btn" onclick="smartGenerate()">Smart Generate</button>
+  </div>
+  <div class="gen-progress hidden" id="smart-progress">
+    <div class="identify-steps">
+      <span class="id-step active" id="smart-step-model">Loading Model</span>
+      <span class="id-step-arrow">→</span>
+      <span class="id-step" id="smart-step-gen">Generating</span>
+      <span class="id-step-arrow">→</span>
+      <span class="id-step" id="smart-step-quality">Quality Check</span>
+    </div>
+    <div class="search-progress-bar-wrap">
+      <div class="search-progress-bar id-progress-bar" id="smart-bar"></div>
+    </div>
+    <div class="search-progress-status" id="smart-progress-status">Loading model...</div>
+  </div>
+  <div class="preview-section hidden" id="smart-preview-section">
+    <audio id="smart-preview-audio" controls></audio>
+    <span id="smart-gen-status" style="font-size:0.8rem;color:var(--dim)"></span>
+  </div>
+  <div class="quality-grid hidden" id="smart-quality-grid"></div>
+  <div class="attempt-log hidden" id="smart-attempt-log"></div>
+</div>
+
+<!-- Voice Reference Search (2-step: Identify → Find Clips) -->
+<div class="card design-section">
+  <h2>Voice Reference Search</h2>
+  <p style="font-size:0.8rem;color:var(--dim);margin-bottom:8px;">Search by name, performance, sound, or vocal quality. First confirm the subject, then browse and select clips.</p>
+
+  <!-- Step 1: Identify -->
+  <div id="search-step-identify">
+    <div class="search-controls">
+      <input type="text" id="voice-search-query" placeholder="e.g. Morgan Freeman, Jaimie Alexander, R2D2 beeps..." />
+      <button class="search-btn" id="voice-identify-btn" onclick="identifySubject()">Identify</button>
+      <button class="test-btn" onclick="resetSearch()" style="white-space:nowrap;">Reset</button>
+    </div>
+    <div class="search-progress hidden" id="identify-progress">
+      <div class="identify-steps" id="identify-steps">
+        <span class="id-step active" id="id-step-gemini">AI Identification</span>
+        <span class="id-step-arrow">→</span>
+        <span class="id-step" id="id-step-image">Finding Image</span>
+      </div>
+      <div class="search-progress-bar-wrap">
+        <div class="search-progress-bar id-progress-bar" id="identify-bar"></div>
+      </div>
+      <div class="search-progress-status" id="identify-status">Asking Gemini AI...</div>
+    </div>
+    <div id="identify-results" class="identify-results"></div>
+  </div>
+
+  <!-- Step 2: Find Clips (shown after confirmation) -->
+  <div id="search-step-clips" class="hidden">
+    <div class="confirmed-subject" id="confirmed-subject"></div>
+    <div class="search-progress hidden" id="clips-progress">
+      <div class="search-progress-log" id="clips-progress-log"></div>
+      <div class="search-progress-bar-wrap">
+        <div class="search-progress-bar" id="clips-progress-bar"></div>
+      </div>
+      <div class="search-progress-status" id="clips-progress-status"></div>
+    </div>
+    <div class="clips-grid" id="clips-grid"></div>
+    <div class="clips-actions hidden" id="clips-actions">
+      <button class="test-btn" onclick="findMoreClips()">Find More Clips</button>
+      <button class="test-btn" onclick="resetSearch()">New Search</button>
+    </div>
+  </div>
+</div>
+
+<!-- Voice Palette -->
+<div class="card">
+  <div class="palette-header">
+    <h2>Voice Palette</h2>
+    <span class="palette-count" id="palette-count">0 references</span>
+  </div>
+  <p style="font-size:0.8rem;color:var(--dim);margin-bottom:8px;">Collect voice references from search results or uploads. Adjust weights to control how much influence each sample has on the final voice.</p>
+  <div id="palette-list">
+    <div class="palette-empty" id="palette-empty">No references added yet. Use "Add to Palette" from search results or upload a reference above.</div>
+  </div>
+  <div class="palette-actions">
+    <button class="test-btn" onclick="clearPalette()" id="palette-clear-btn" style="display:none">Clear All</button>
+    <button class="test-btn" onclick="normalizePaletteWeights()" id="palette-normalize-btn" style="display:none">Normalize Weights</button>
+  </div>
+
+  <!-- Suggest description from palette -->
+  <div class="hidden" id="palette-suggest-section" style="margin-top:10px;">
+    <h3>Suggest Description from Palette</h3>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:6px;">
+      <label style="font-size:0.75rem;color:var(--dim);">Mode:</label>
+      <select id="suggest-mode" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px;font-size:0.8rem;">
+        <option value="commonalities">Distill Commonalities</option>
+        <option value="additive">Combine Differences</option>
+      </select>
+      <button class="test-btn" onclick="suggestFromPalette()" id="suggest-btn">Suggest</button>
+    </div>
+    <div style="font-size:0.72rem;color:var(--dim);margin-top:4px;" id="suggest-mode-hint">Finds shared characteristics across all references — what they have in common.</div>
+    <div class="hidden" id="suggest-result" style="margin-top:8px;">
+      <div id="suggest-description" style="font-size:0.85rem;padding:8px;background:rgba(99,179,219,0.08);border:1px solid rgba(99,179,219,0.15);border-radius:4px;cursor:pointer;" onclick="useSuggestion()" title="Click to use this description"></div>
+      <div class="anatomy-auto-grid" id="suggest-anatomy-grid" style="margin-top:6px;"></div>
+      <div style="font-size:0.7rem;color:var(--dim);margin-top:4px;" id="suggest-explanation"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Voice Composer -->
+<div class="card design-section">
+  <h2>Voice Composer</h2>
+  <p style="font-size:0.8rem;color:var(--dim);margin-bottom:8px;">Compose a voice from your palette references, a text description, and structural voice anatomy controls. By default, the anatomy layer works behind the scenes — toggle Advanced Mode to control individual elements.</p>
+
+  <textarea id="compose-desc" rows="2" placeholder="Describe the overall voice: 'A warm, deep male voice with authoritative tone and deliberate pacing'"></textarea>
+
+  <div class="anatomy-toggle">
+    <input type="checkbox" id="anatomy-advanced-toggle" onchange="toggleAnatomyMode()">
+    <label for="anatomy-advanced-toggle">Advanced Mode — control individual voice elements</label>
+  </div>
+
+  <!-- Auto decomposition (shown in basic mode after composing) -->
+  <div class="anatomy-auto hidden" id="anatomy-auto">
+    <h3>Detected Voice Elements</h3>
+    <div class="anatomy-auto-grid" id="anatomy-auto-grid"></div>
+  </div>
+
+  <!-- Advanced mode: per-element controls -->
+  <div class="anatomy-advanced hidden" id="anatomy-advanced">
+    <h3>Voice Anatomy Controls</h3>
+    <div id="anatomy-elements"></div>
+  </div>
+
+  <div class="design-row">
+    <input type="text" id="compose-preview-text" value="The quick brown fox jumps over the lazy dog." />
+    <label style="font-size:0.75rem;color:var(--dim);white-space:nowrap;">Tries:
+      <select id="compose-max-attempts" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px;">
+        <option value="1">1</option><option value="2">2</option><option value="3" selected>3</option><option value="5">5</option>
+      </select>
+    </label>
+    <button class="compose-btn" id="compose-btn" onclick="composeVoice()">Compose Voice</button>
+  </div>
+
+  <div class="gen-progress hidden" id="compose-progress">
+    <div class="identify-steps">
+      <span class="id-step active" id="compose-step-prompt">Building Prompt</span>
+      <span class="id-step-arrow">→</span>
+      <span class="id-step" id="compose-step-gen">Generating</span>
+      <span class="id-step-arrow">→</span>
+      <span class="id-step" id="compose-step-quality">Quality Check</span>
+    </div>
+    <div class="search-progress-bar-wrap">
+      <div class="search-progress-bar id-progress-bar" id="compose-bar"></div>
+    </div>
+    <div class="search-progress-status" id="compose-progress-status">Building voice prompt...</div>
+  </div>
+  <div class="preview-section hidden" id="compose-preview-section">
+    <audio id="compose-preview-audio" controls></audio>
+    <span id="compose-status" style="font-size:0.8rem;color:var(--dim)"></span>
+  </div>
+  <div class="quality-grid hidden" id="compose-quality-grid"></div>
+  <div class="compose-result hidden" id="compose-result">
+    <div class="compose-prompt" id="compose-prompt"></div>
+  </div>
+
+  <!-- Clone sample generation -->
+  <div class="hidden" id="clone-section" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+    <h3>Generate Clone-Ready Sample</h3>
+    <p style="font-size:0.75rem;color:var(--dim);margin-bottom:6px;">Generate 10-15 seconds of varied speech with this voice, suitable for cloning in Chatterbox, Coqui XTTS, or similar engines.</p>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <label style="font-size:0.75rem;color:var(--dim);white-space:nowrap;">Duration:
+        <select id="clone-duration" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px;">
+          <option value="10">10s</option>
+          <option value="15" selected>15s</option>
+          <option value="20">20s</option>
+          <option value="30">30s</option>
+        </select>
+      </label>
+      <button class="gen-btn" id="clone-btn" onclick="generateCloneSample()">Generate Clone Sample</button>
+    </div>
+    <div class="preview-section hidden" id="clone-preview-section" style="margin-top:8px;">
+      <audio id="clone-preview-audio" controls></audio>
+      <span id="clone-status" style="font-size:0.8rem;color:var(--dim)"></span>
+    </div>
+    <div class="hidden" id="clone-download-section" style="margin-top:6px;display:flex;gap:8px;align-items:center;">
+      <button class="test-btn" id="clone-download-btn" onclick="downloadCloneSample()">Download WAV</button>
+      <button class="test-btn" id="clone-save-btn" onclick="saveCloneAsSample()">Save as Voice Sample</button>
+      <span style="font-size:0.72rem;color:var(--dim);" id="clone-info"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = 'http://127.0.0.1:21749';
+let refEmbedding = null;
+let refPcmB64 = null;
+let refSampleRate = 16000;
+
+function tlog(msg, cls='info') {
+  const el = document.createElement('div');
+  el.className = cls;
+  el.textContent = `[${new Date().toLocaleTimeString('en-US',{hour12:false})}] ${msg}`;
+  const log = document.getElementById('log');
+  log.appendChild(el);
+  log.scrollTop = 99999;
+}
+
+function setDot(id, state) { document.getElementById(id).className = 'test-dot ' + state; }
+function setResult(id, txt) { document.getElementById(id).textContent = txt; }
+
+// ── Stack check ──
+async function checkStack() {
+  try {
+    const r = await fetch(API + '/stack_status', { signal: AbortSignal.timeout(5000) });
+    const d = await r.json();
+    const dots = { 'dot-ws': d.ws, 'dot-align': d.alignment, 'dot-quality': d.quality, 'dot-designer': d.designer };
+    let up = 0;
+    for (const [id, ok] of Object.entries(dots)) {
+      document.getElementById(id).className = 'dot ' + (ok ? 'up' : 'down');
+      if (ok) up++;
+    }
+    document.getElementById('stack-status').textContent = `${up}/4 up`;
+    document.getElementById('stack-status').style.color = up === 4 ? 'var(--pass)' : up > 0 ? 'var(--warn)' : 'var(--fail)';
+  } catch {
+    document.getElementById('stack-status').textContent = 'Error';
+    document.getElementById('stack-status').style.color = 'var(--fail)';
+  }
+}
+checkStack();
+setInterval(checkStack, 15000);
+
+// ── Model status polling ──
+let modelPollTimer = null;
+
+async function pollModelStatus() {
+  try {
+    const r = await fetch(API + '/model_status', { signal: AbortSignal.timeout(3000) });
+    const d = await r.json();
+
+    for (const [model, status] of Object.entries(d)) {
+      const stateEl = document.getElementById(`ms-${model}-state`);
+      const stageEl = document.getElementById(`ms-${model}-stage`);
+      const progressEl = document.getElementById(`ms-${model}-progress`);
+      if (!stateEl) continue;
+
+      stateEl.className = `model-state ${status.state}`;
+      stateEl.textContent = status.state;
+      stageEl.textContent = status.stage || (status.state === 'idle' ? 'Not loaded' : '');
+      progressEl.style.width = `${status.progress}%`;
+
+      if (status.state === 'loading') {
+        progressEl.style.background = 'var(--warn)';
+      } else if (status.state === 'ready') {
+        progressEl.style.background = 'var(--pass)';
+      } else if (status.state === 'error') {
+        progressEl.style.background = 'var(--fail)';
+      } else {
+        progressEl.style.background = 'var(--accent)';
+      }
+    }
+
+    // Stop polling if both are done
+    const allDone = Object.values(d).every(s => s.state !== 'loading');
+    if (allDone && modelPollTimer) {
+      clearInterval(modelPollTimer);
+      modelPollTimer = null;
+      document.getElementById('preload-btn').disabled = false;
+      document.getElementById('preload-btn').textContent = 'Preload All Models';
+    }
+  } catch { /* ignore */ }
+}
+
+// Gemini status check (uses /health endpoint)
+async function checkGeminiStatus() {
+  const stateEl = document.getElementById('ms-gemini-state');
+  const stageEl = document.getElementById('ms-gemini-stage');
+  try {
+    const r = await fetch(API + '/health', { signal: AbortSignal.timeout(3000) });
+    const d = await r.json();
+    const gs = d.gemini || 'not_configured';
+    if (gs === 'connected') {
+      stateEl.className = 'model-state ready';
+      stateEl.textContent = 'connected';
+      stageEl.textContent = d.gemini_model || 'Gemini';
+    } else if (gs === 'error') {
+      stateEl.className = 'model-state error';
+      stateEl.textContent = 'error';
+      stageEl.textContent = 'API key invalid or import failed';
+    } else {
+      stateEl.className = 'model-state idle';
+      stateEl.textContent = 'off';
+      stageEl.textContent = 'No GEMINI_API_KEY in .env';
+    }
+  } catch {
+    stateEl.className = 'model-state idle';
+    stateEl.textContent = '?';
+    stageEl.textContent = 'Server unreachable';
+  }
+}
+
+// Initial checks
+pollModelStatus();
+checkGeminiStatus();
+
+async function preloadModels() {
+  const btn = document.getElementById('preload-btn');
+  btn.disabled = true;
+  btn.textContent = 'Loading...';
+
+  try {
+    await fetch(API + '/preload', { method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ models: ['parler', 'encoder'] }) });
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = 'Preload All Models';
+    return;
+  }
+
+  // Start polling for status updates
+  if (modelPollTimer) clearInterval(modelPollTimer);
+  modelPollTimer = setInterval(pollModelStatus, 1000);
+}
+
+// ── Reference audio ──
+const refFileInput = document.getElementById('ref-file');
+refFileInput.addEventListener('change', () => {
+  const file = refFileInput.files[0];
+  document.getElementById('ref-upload-btn').disabled = !file;
+  document.getElementById('ref-design-btn').disabled = !file;
+  if (file) {
+    const url = URL.createObjectURL(file);
+    const player = document.getElementById('ref-player');
+    player.src = url;
+    player.classList.remove('hidden');
+    document.getElementById('ref-status').textContent = `Selected: ${file.name} (${(file.size/1024).toFixed(0)} KB)`;
+  }
+});
+
+async function fileToF32PCM(file) {
+  const arrayBuf = await file.arrayBuffer();
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const decoded = await audioCtx.decodeAudioData(arrayBuf);
+  const channelData = decoded.getChannelData(0); // mono
+  refSampleRate = decoded.sampleRate;
+  audioCtx.close();
+  return channelData;
+}
+
+async function uploadReference() {
+  const file = refFileInput.files[0];
+  if (!file) return;
+
+  const statusEl = document.getElementById('ref-status');
+  const infoEl = document.getElementById('ref-embedding-info');
+  statusEl.textContent = 'Decoding audio...';
+
+  try {
+    const pcm = await fileToF32PCM(file);
+    statusEl.textContent = `Extracting embedding from ${pcm.length} samples @ ${refSampleRate}Hz...`;
+
+    // Store PCM as base64 for potential use
+    refPcmB64 = btoa(String.fromCharCode(...new Uint8Array(pcm.buffer)));
+
+    const r = await fetch(API + '/extract_embedding', { method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream', 'X-Sample-Rate': String(refSampleRate) },
+      body: new Uint8Array(pcm.buffer) });
+    const d = await r.json();
+
+    if (!d.success) throw new Error(d.error);
+
+    refEmbedding = d.embedding;
+    statusEl.textContent = 'Embedding extracted successfully.';
+    infoEl.textContent = `Embedding: ${d.dimensions} dimensions`;
+    document.getElementById('ref-palette-btn').disabled = false;
+    infoEl.classList.remove('hidden');
+  } catch (e) {
+    statusEl.textContent = `Error: ${e}`;
+    infoEl.classList.add('hidden');
+  }
+}
+
+async function designWithReference() {
+  const file = refFileInput.files[0];
+  if (!file) { alert('Select an audio file first'); return; }
+
+  const desc = document.getElementById('desc').value.trim();
+  const previewText = document.getElementById('preview-text').value.trim();
+  if (!desc) { alert('Enter a voice description above'); return; }
+
+  const statusEl = document.getElementById('ref-status');
+  const genBtn = document.getElementById('ref-design-btn');
+  genBtn.disabled = true;
+  statusEl.textContent = 'Decoding audio...';
+
+  try {
+    const pcm = await fileToF32PCM(file);
+    const pcmB64 = btoa(String.fromCharCode(...new Uint8Array(pcm.buffer)));
+    statusEl.textContent = 'Sending to server (design + reference extraction)...';
+
+    const r = await fetch(API + '/design_with_reference', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        description: desc,
+        preview_text: previewText,
+        reference_audio_base64: pcmB64,
+        reference_sample_rate: refSampleRate,
+      }),
+      signal: AbortSignal.timeout(300000) });
+    const d = await r.json();
+
+    if (!d.success) throw new Error(d.error);
+
+    // Play the generated audio
+    const raw = atob(d.audio_base64);
+    const audioArr = new Float32Array(new Uint8Array(raw.length).map((_,i)=>raw.charCodeAt(i)).buffer);
+    const wav = pcmToWav(audioArr, d.sample_rate);
+    const previewAudio = document.getElementById('preview-audio');
+    previewAudio.src = URL.createObjectURL(wav);
+    document.getElementById('preview-section').classList.remove('hidden');
+    document.getElementById('gen-status').textContent = `Generated ${d.duration_ms?.toFixed(0)}ms @ ${d.sample_rate}Hz (ref: ${d.reference_embedding_dimensions}D embedding)`;
+
+    refEmbedding = d.reference_embedding;
+    const infoEl = document.getElementById('ref-embedding-info');
+    infoEl.textContent = `Reference embedding: ${d.reference_embedding_dimensions} dimensions`;
+    infoEl.classList.remove('hidden');
+    statusEl.textContent = 'Design with reference complete.';
+  } catch (e) {
+    statusEl.textContent = `Error: ${e}`;
+  }
+  genBtn.disabled = false;
+}
+
+// ── Test functions ──
+const tests = {};
+
+tests.health = async () => {
+  setDot('td-health', 'running'); setResult('tr-health', 'Checking...');
+  tlog('Testing server health endpoint...');
+  const r = await fetch(API + '/health');
+  const d = await r.json();
+  if (d.status !== 'ok') throw new Error('Bad status: ' + d.status);
+  setDot('td-health', 'pass'); setResult('tr-health', `OK (device: ${d.device})`);
+  tlog(`Health: OK — device=${d.device}, profiles=${d.num_profiles}`, 'pass');
+};
+
+tests.profiles = async () => {
+  setDot('td-profiles', 'running'); setResult('tr-profiles', 'Running...');
+  tlog('Testing profile lifecycle (save/list/delete)...');
+
+  let r = await fetch(API + '/save_profile', { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ profile_id: '__test__', name: 'Test', description: 'Auto test', sample_rate: 22050 }) });
+  let d = await r.json();
+  if (!d.success) throw new Error('Save: ' + d.error);
+  tlog('  Saved __test__ profile');
+
+  r = await fetch(API + '/list_profiles'); d = await r.json();
+  if (!d.profiles.some(p => p.id === '__test__')) throw new Error('Not found in list');
+  tlog('  Listed profiles — found __test__');
+
+  r = await fetch(API + '/delete_profile', { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ profile_id: '__test__' }) });
+  d = await r.json();
+  if (!d.success) throw new Error('Delete: ' + d.error);
+  tlog('  Deleted __test__');
+
+  setDot('td-profiles', 'pass'); setResult('tr-profiles', 'Save/List/Delete OK');
+  tlog('Profile lifecycle: PASS', 'pass');
+};
+
+tests.encoder = async () => {
+  setDot('td-encoder', 'running'); setResult('tr-encoder', 'Loading encoder...');
+  tlog('Testing speaker embedding extraction...');
+  const pcm = new Float32Array(16000);
+  for (let i = 0; i < pcm.length; i++) pcm[i] = Math.sin(i * 0.1) * 0.3;
+
+  const r = await fetch(API + '/extract_embedding', { method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream', 'X-Sample-Rate': '16000' },
+    body: new Uint8Array(pcm.buffer) });
+  const d = await r.json();
+  if (!d.success) throw new Error(d.error);
+  setDot('td-encoder', 'pass'); setResult('tr-encoder', `OK (${d.dimensions}D)`);
+  tlog(`Speaker encoder: ${d.dimensions}-dim embeddings`, 'pass');
+  return d.embedding;
+};
+
+tests.blend = async () => {
+  setDot('td-blend', 'running'); setResult('tr-blend', 'Running...');
+  tlog('Testing embedding blend...');
+
+  const dim = 256;
+  const e1 = Array.from({length: dim}, () => Math.random());
+  const e2 = Array.from({length: dim}, () => Math.random());
+
+  const r = await fetch(API + '/blend', { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ embeddings: [e1, e2], weights: [0.7, 0.3] }) });
+  const d = await r.json();
+  if (!d.success) throw new Error(d.error);
+  if (d.embedding.length !== dim) throw new Error('Wrong dimensions: ' + d.embedding.length);
+  setDot('td-blend', 'pass'); setResult('tr-blend', `OK (${d.dimensions}D, weights: ${d.weights_normalized.map(w=>w.toFixed(2)).join('/')})`);
+  tlog(`Blend: ${d.dimensions}D, normalized weights ${d.weights_normalized.map(w=>w.toFixed(2))}`, 'pass');
+};
+
+tests.parler = async () => {
+  setDot('td-parler', 'running'); setResult('tr-parler', 'Loading Parler-TTS...');
+  tlog('Testing Parler-TTS voice design...');
+
+  // Start polling model status during load
+  if (!modelPollTimer) modelPollTimer = setInterval(pollModelStatus, 1000);
+
+  const r = await fetch(API + '/design', { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ description: 'A calm, clear female voice', preview_text: 'Hello world' }),
+    signal: AbortSignal.timeout(300000) });
+  const d = await r.json();
+  if (!d.success) throw new Error(d.error);
+  setDot('td-parler', 'pass'); setResult('tr-parler', `OK (${d.duration_ms?.toFixed(0)}ms audio)`);
+  tlog(`Parler-TTS: generated ${d.duration_ms?.toFixed(0)}ms audio`, 'pass');
+
+  // Final status poll
+  await pollModelStatus();
+};
+
+tests.ref_design = async () => {
+  setDot('td-ref_design', 'running'); setResult('tr-ref_design', 'Running...');
+  tlog('Testing design with reference audio...');
+
+  // Create synthetic reference audio
+  const pcm = new Float32Array(16000);
+  for (let i = 0; i < pcm.length; i++) pcm[i] = Math.sin(i * 0.1 + Math.sin(i * 0.01) * 2) * 0.3;
+  const pcmB64 = btoa(String.fromCharCode(...new Uint8Array(pcm.buffer)));
+
+  if (!modelPollTimer) modelPollTimer = setInterval(pollModelStatus, 1000);
+
+  const r = await fetch(API + '/design_with_reference', { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({
+      description: 'A warm, friendly male voice',
+      preview_text: 'Testing reference design',
+      reference_audio_base64: pcmB64,
+      reference_sample_rate: 16000,
+    }),
+    signal: AbortSignal.timeout(300000) });
+  const d = await r.json();
+  if (!d.success) throw new Error(d.error);
+  if (!d.reference_embedding || !d.reference_embedding.length) throw new Error('No embedding returned');
+
+  setDot('td-ref_design', 'pass');
+  setResult('tr-ref_design', `OK (${d.duration_ms?.toFixed(0)}ms, ${d.reference_embedding_dimensions}D emb)`);
+  tlog(`Design+ref: ${d.duration_ms?.toFixed(0)}ms audio, ${d.reference_embedding_dimensions}D embedding`, 'pass');
+  await pollModelStatus();
+};
+
+tests.smart_design = async () => {
+  setDot('td-smart_design', 'running'); setResult('tr-smart_design', 'Generating + analyzing...');
+  tlog('Testing smart design with quality self-analysis...');
+
+  if (!modelPollTimer) modelPollTimer = setInterval(pollModelStatus, 1000);
+
+  const r = await fetch(API + '/design_smart', { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({
+      description: 'A clear, articulate female voice',
+      preview_text: 'Hello world',
+      max_attempts: 2,
+      min_mos: 2.0,
+    }),
+    signal: AbortSignal.timeout(300000) });
+  const d = await r.json();
+  if (!d.success) throw new Error(d.error);
+
+  const q = d.quality || {};
+  const mos = q.overall_mos ? q.overall_mos.toFixed(2) : 'N/A';
+  const attempts = d.total_attempts || 1;
+  setDot('td-smart_design', 'pass');
+  setResult('tr-smart_design', `OK (MOS:${mos}, ${attempts} attempt${attempts>1?'s':''})`);
+  tlog(`Smart design: MOS=${mos}, ${attempts} attempt(s), ${d.duration_ms?.toFixed(0)}ms audio`, 'pass');
+  await pollModelStatus();
+};
+
+tests.voice_search = async () => {
+  setDot('td-voice_search', 'running'); setResult('tr-voice_search', 'Searching YouTube...');
+  tlog('Testing voice reference search on YouTube...');
+
+  const r = await fetch(API + '/search_voice', { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ query: 'David Attenborough narration', max_results: 1, max_duration: 30 }),
+    signal: AbortSignal.timeout(120000) });
+  const d = await r.json();
+  if (!d.success) throw new Error(d.error || 'No results with embeddings');
+
+  setDot('td-voice_search', 'pass');
+  setResult('tr-voice_search', `OK (${d.num_with_embeddings}/${d.num_found} with embeddings)`);
+  tlog(`Voice search: found ${d.num_found} results, ${d.num_with_embeddings} with embeddings`, 'pass');
+  for (const res of d.results) {
+    tlog(`  - "${res.title}" (${res.duration}s) ${res.embedding ? '✓ embedding' : '✗ ' + (res.error||'')}`,
+         res.embedding ? 'pass' : 'fail');
+  }
+};
+
+async function runOne(name) {
+  try { await tests[name](); }
+  catch (e) {
+    setDot('td-'+name, 'fail'); setResult('tr-'+name, String(e).substring(0,60));
+    tlog(`${name}: FAILED — ${e}`, 'fail');
+  }
+}
+
+async function runAll() {
+  const btn = document.getElementById('run-all-btn');
+  btn.disabled = true; btn.textContent = 'Running...';
+  document.getElementById('log').innerHTML = '';
+  document.getElementById('summary').className = 'hidden';
+  tlog('=== Running all Phase 3 tests ===');
+
+  let passed = 0, total = 0;
+  for (const name of ['health','profiles','encoder','blend','parler','ref_design','smart_design','voice_search']) {
+    total++;
+    try { await tests[name](); passed++; }
+    catch (e) {
+      setDot('td-'+name, 'fail'); setResult('tr-'+name, String(e).substring(0,60));
+      tlog(`${name}: FAILED — ${e}`, 'fail');
+    }
+  }
+
+  tlog(`=== Results: ${passed}/${total} passed ===`, passed === total ? 'pass' : 'fail');
+  const sum = document.getElementById('summary');
+  sum.className = 'summary-bar ' + (passed === total ? 'all-pass' : 'some-fail');
+  sum.textContent = `${passed}/${total} tests passed`;
+
+  btn.disabled = false; btn.textContent = 'Run All Tests';
+}
+
+// ── Progress animation helper ──
+function startGenProgress(prefix, stepIds, stepLabels, intervalMs = 3000) {
+  const bar = document.getElementById(prefix + '-bar');
+  const statusEl = document.getElementById(prefix + '-progress-status');
+  const container = document.getElementById(prefix + '-progress');
+  container.classList.remove('hidden');
+
+  let idx = 0;
+  function setStep(i) {
+    stepIds.forEach((id, j) => {
+      const el = document.getElementById(id);
+      el.classList.remove('active', 'done');
+      if (j < i) el.classList.add('done');
+      else if (j === i) el.classList.add('active');
+    });
+    if (i < stepLabels.length) statusEl.textContent = stepLabels[i];
+    bar.style.width = Math.min(90, ((i + 1) / stepIds.length) * 90) + '%';
+  }
+  setStep(0);
+
+  const timer = setInterval(() => {
+    if (idx < stepIds.length - 1) { idx++; setStep(idx); }
+  }, intervalMs);
+
+  return {
+    complete() {
+      clearInterval(timer);
+      stepIds.forEach(id => { const el = document.getElementById(id); el.classList.remove('active'); el.classList.add('done'); });
+      bar.style.width = '100%';
+      statusEl.textContent = 'Done!';
+      setTimeout(() => container.classList.add('hidden'), 600);
+    },
+    fail() {
+      clearInterval(timer);
+      container.classList.add('hidden');
+    }
+  };
+}
+
+// ── Interactive design ──
+async function generateVoice() {
+  const desc = document.getElementById('desc').value.trim();
+  const text = document.getElementById('preview-text').value.trim();
+  if (!desc) { alert('Enter a voice description'); return; }
+
+  const btn = document.getElementById('gen-btn');
+  const status = document.getElementById('gen-status');
+  btn.disabled = true; btn.textContent = 'Generating...';
+  status.textContent = 'Loading model & generating...';
+  document.getElementById('preview-section').classList.remove('hidden');
+
+  const prog = startGenProgress('gen',
+    ['gen-step-model', 'gen-step-gen'],
+    ['Loading Parler-TTS model...', 'Generating audio...'],
+    4000);
+
+  if (!modelPollTimer) modelPollTimer = setInterval(pollModelStatus, 1000);
+
+  try {
+    const r = await fetch(API + '/design', { method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ description: desc, preview_text: text }),
+      signal: AbortSignal.timeout(300000) });
+    const d = await r.json();
+    if (!d.success) throw new Error(d.error);
+
+    prog.complete();
+    const raw = atob(d.audio_base64);
+    const pcm = new Float32Array(new Uint8Array(raw.length).map((_,i)=>raw.charCodeAt(i)).buffer);
+    const wav = pcmToWav(pcm, d.sample_rate);
+    document.getElementById('preview-audio').src = URL.createObjectURL(wav);
+    status.textContent = `Generated ${d.duration_ms?.toFixed(0)}ms @ ${d.sample_rate}Hz`;
+  } catch (e) {
+    prog.fail();
+    status.textContent = `Error: ${e}`;
+  }
+  btn.disabled = false; btn.textContent = 'Generate';
+  await pollModelStatus();
+}
+
+// ── Smart generate ──
+async function smartGenerate() {
+  const desc = document.getElementById('smart-desc').value.trim();
+  const text = document.getElementById('smart-preview-text').value.trim();
+  const maxAttempts = parseInt(document.getElementById('smart-max-attempts').value);
+  if (!desc) { alert('Enter a voice description'); return; }
+
+  const btn = document.getElementById('smart-gen-btn');
+  const status = document.getElementById('smart-gen-status');
+  const qualityGrid = document.getElementById('smart-quality-grid');
+  const attemptLog = document.getElementById('smart-attempt-log');
+  btn.disabled = true; btn.textContent = 'Generating...';
+  status.textContent = `Generating with up to ${maxAttempts} attempts + quality analysis...`;
+  document.getElementById('smart-preview-section').classList.remove('hidden');
+  qualityGrid.classList.add('hidden');
+  attemptLog.classList.add('hidden');
+
+  const prog = startGenProgress('smart',
+    ['smart-step-model', 'smart-step-gen', 'smart-step-quality'],
+    ['Loading model...', 'Generating audio...', 'Analyzing quality...'],
+    5000);
+
+  if (!modelPollTimer) modelPollTimer = setInterval(pollModelStatus, 1000);
+
+  try {
+    const r = await fetch(API + '/design_smart', { method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ description: desc, preview_text: text, max_attempts: maxAttempts, min_mos: 2.5 }),
+      signal: AbortSignal.timeout(300000) });
+    const d = await r.json();
+    prog.complete();
+    if (!d.success) throw new Error(d.error);
+
+    // Play audio
+    const raw = atob(d.audio_base64);
+    const pcm = new Float32Array(new Uint8Array(raw.length).map((_,i)=>raw.charCodeAt(i)).buffer);
+    const wav = pcmToWav(pcm, d.sample_rate);
+    document.getElementById('smart-preview-audio').src = URL.createObjectURL(wav);
+
+    // Show quality metrics (quality server nests under mos/asr/signal/overall)
+    const q = d.quality || {};
+    const qMos = q.mos || {};
+    const qAsr = q.asr || {};
+    const qSignal = q.signal || {};
+    const qOverall = q.overall || {};
+    qualityGrid.innerHTML = '';
+    const metrics = [
+      { label: 'MOS Score', value: qMos.mos?.toFixed(2) || 'N/A', threshold: [3, 2.5] },
+      { label: 'Overall', value: qOverall.score?.toFixed(2) || 'N/A', threshold: [3, 2] },
+      { label: 'WER', value: qAsr.wer != null ? (qAsr.wer * 100).toFixed(1) + '%' : 'N/A', threshold: [15, 30], invert: true },
+      { label: 'SNR', value: qSignal.snr_db != null ? qSignal.snr_db.toFixed(1) + 'dB' : 'N/A', threshold: [20, 10] },
+      { label: 'ASR', value: qAsr.hypothesis ? '"' + qAsr.hypothesis.substring(0,30) + '"' : 'N/A' },
+      { label: 'Attempts', value: d.total_attempts || 1 },
+      { label: 'Duration', value: d.duration_ms?.toFixed(0) + 'ms' || 'N/A' },
+      { label: 'Rating', value: qMos.rating || qOverall.rating || 'N/A' },
+    ];
+    for (const m of metrics) {
+      const div = document.createElement('div');
+      div.className = 'quality-metric';
+      let cls = '';
+      if (m.threshold) {
+        const numVal = parseFloat(m.value);
+        if (!isNaN(numVal)) {
+          if (m.invert) cls = numVal <= m.threshold[0] ? 'good' : numVal <= m.threshold[1] ? 'ok' : 'bad';
+          else cls = numVal >= m.threshold[0] ? 'good' : numVal >= m.threshold[1] ? 'ok' : 'bad';
+        }
+      }
+      div.innerHTML = `<div class="metric-label">${m.label}</div><div class="metric-value ${cls}">${m.value}</div>`;
+      qualityGrid.appendChild(div);
+    }
+    qualityGrid.classList.remove('hidden');
+
+    // Show attempt log
+    if (d.attempts && d.attempts.length > 0) {
+      attemptLog.innerHTML = d.attempts.map((a,i) => {
+        const parts = [`Attempt ${a.attempt || i+1}`];
+        if (a.mos != null) parts.push(`MOS=${a.mos}`);
+        if (a.wer != null) parts.push(`WER=${(a.wer*100).toFixed(1)}%`);
+        if (a.snr_db != null) parts.push(`SNR=${a.snr_db}dB`);
+        if (a.error) parts.push(`Error: ${a.error}`);
+        if (a.quality_unavailable) parts.push('(quality server unavailable)');
+        return `<div class="attempt-row">${parts.join(' | ')}</div>`;
+      }).join('');
+      attemptLog.classList.remove('hidden');
+    }
+
+    status.textContent = `Best of ${d.total_attempts} attempt(s) — MOS: ${qMos.mos?.toFixed(2) || 'N/A'}, Overall: ${qOverall.score?.toFixed(2) || 'N/A'}`;
+  } catch (e) {
+    prog.fail();
+    status.textContent = `Error: ${e}`;
+  }
+  btn.disabled = false; btn.textContent = 'Smart Generate';
+  await pollModelStatus();
+}
+
+// ── Voice reference search (2-step: Identify → Find Clips) ──
+let searchExcludeIds = [];
+const searchResultsCache = {}; // video_id -> full clip data
+let confirmedSubject = null; // { query, classification, summary, clip_queries }
+
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// ── Step 1: Identify ──
+
+async function identifySubject() {
+  const query = document.getElementById('voice-search-query').value.trim();
+  if (!query) { alert('Enter a name or description'); return; }
+
+  const btn = document.getElementById('voice-identify-btn');
+  const progress = document.getElementById('identify-progress');
+  const resultsDiv = document.getElementById('identify-results');
+
+  btn.disabled = true; btn.textContent = 'Identifying...';
+  progress.classList.remove('hidden');
+  resultsDiv.innerHTML = '';
+
+  // Animate progress steps
+  const bar = document.getElementById('identify-bar');
+  const status = document.getElementById('identify-status');
+  const steps = ['id-step-gemini', 'id-step-image'];
+  const stepLabels = ['Asking Gemini AI...', 'Finding image...'];
+
+  function setStep(idx) {
+    steps.forEach((id, i) => {
+      const el = document.getElementById(id);
+      el.classList.remove('active', 'done');
+      if (i < idx) el.classList.add('done');
+      else if (i === idx) el.classList.add('active');
+    });
+    if (idx < stepLabels.length) status.textContent = stepLabels[idx];
+    bar.style.width = Math.min(90, (idx + 1) * 45) + '%';
+  }
+  setStep(0);
+
+  // Advance steps on a timer while waiting for the response
+  let stepIdx = 0;
+  const stepTimer = setInterval(() => {
+    if (stepIdx < steps.length - 1) { stepIdx++; setStep(stepIdx); }
+  }, 8000);
+
+  try {
+    const r = await fetch(API + '/identify', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ query }),
+    });
+    clearInterval(stepTimer);
+    // Mark all steps done
+    steps.forEach(id => { const el = document.getElementById(id); el.classList.remove('active'); el.classList.add('done'); });
+    bar.style.width = '100%';
+    status.textContent = 'Done!';
+    const d = await r.json();
+    setTimeout(() => progress.classList.add('hidden'), 400);
+
+    if (!d.success) throw new Error(d.error || 'Not found');
+
+    // Show identity card
+    const c = d.classification || {};
+    const typeLabel = c.is_sfx ? 'Sound/Effect' : c.is_quality ? 'Vocal Quality' :
+                      c.is_performance ? 'Performance' : 'Person';
+
+    let knownForHtml = '';
+    if (d.known_for && d.known_for.length > 0) {
+      knownForHtml = `<div class="id-known-for"><span>Known for:</span> ${d.known_for.map(k => escHtml(k)).join(' · ')}</div>`;
+    }
+
+    let voiceHtml = '';
+    if (d.voice_description) {
+      voiceHtml = `<div style="font-size:0.78rem;color:#9f99ff;margin-bottom:8px;font-style:italic;">${escHtml(d.voice_description)}</div>`;
+    }
+
+    // Build image HTML
+    let imageHtml = '';
+    if (d.image_url) {
+      imageHtml = `<img class="id-image" src="${d.image_url}" alt="${escHtml(d.name || query)}" onerror="this.style.display='none'" referrerpolicy="no-referrer" crossorigin="anonymous" />`;
+    }
+
+    // Build suggested samples HTML
+    let samplesHtml = '';
+    if (d.suggested_samples && d.suggested_samples.length > 0) {
+      samplesHtml = `<div class="id-samples">
+        <strong>Suggested samples:</strong>
+        <ul>${d.suggested_samples.map(s => `<li><span class="sample-title">${escHtml(s.title || s)}</span>${s.why ? ` <span class="sample-why">— ${escHtml(s.why)}</span>` : ''}</li>`).join('')}</ul>
+      </div>`;
+    }
+
+    // Build alternatives for "wrong" handling
+    let alternativesData = [];
+    if (d.disambiguation && Array.isArray(d.disambiguation)) {
+      alternativesData = d.disambiguation;
+    }
+    if (d.alternatives && Array.isArray(d.alternatives)) {
+      alternativesData = alternativesData.concat(d.alternatives);
+    }
+
+    const subjectData = JSON.stringify({
+      query,
+      name: d.name || query,
+      classification: d.classification,
+      summary: d.summary,
+      voice_description: d.voice_description,
+      clip_queries: d.suggested_clip_queries,
+      suggested_samples: d.suggested_samples,
+      alternatives: alternativesData,
+    });
+
+    resultsDiv.innerHTML = `
+      <div class="identity-card">
+        <div class="id-header">
+          ${imageHtml}
+          <div class="id-header-text">
+            <span class="id-name">${escHtml(d.name || query)}</span>
+            <span class="id-type">${typeLabel}${d.ai_powered ? ' · AI' : ''}</span>
+          </div>
+        </div>
+        <div class="id-summary">${escHtml(d.summary || 'No description available.')}</div>
+        ${voiceHtml}
+        ${knownForHtml}
+        ${samplesHtml}
+        <div class="id-actions">
+          <button class="id-confirm-btn" onclick='confirmSubject(${subjectData.replace(/'/g, "&#39;")})'>That's right — Find Clips</button>
+          <button class="id-wrong-btn" onclick='showAlternatives(${subjectData.replace(/'/g, "&#39;")})'>That's not right</button>
+        </div>
+      </div>
+    `;
+  } catch (e) {
+    clearInterval(stepTimer);
+    progress.classList.add('hidden');
+    resultsDiv.innerHTML = `<div style="color:var(--fail);font-size:0.85rem;">Could not identify: ${escHtml(String(e))}</div>`;
+  }
+  btn.disabled = false; btn.textContent = 'Identify';
+}
+
+function showAlternatives(subject) {
+  const resultsDiv = document.getElementById('identify-results');
+  const alts = subject.alternatives || [];
+
+  if (alts.length === 0) {
+    resultsDiv.innerHTML += `<div style="color:var(--warn);font-size:0.85rem;margin-top:10px;">
+      No alternatives found. Try a more specific query.
+    </div>`;
+    return;
+  }
+
+  let altCards = alts.map(alt => {
+    const name = typeof alt === 'string' ? alt : (alt.name || alt.full_name || String(alt));
+    const desc = (typeof alt === 'object' && alt.description) ? alt.description : '';
+    return `<div class="alt-card" onclick="reIdentify('${escHtml(name)}')">
+      <span class="alt-name">${escHtml(name)}</span>
+      ${desc ? `<span class="alt-desc">${escHtml(desc)}</span>` : ''}
+    </div>`;
+  }).join('');
+
+  resultsDiv.innerHTML += `
+    <div class="alternatives-panel">
+      <div style="font-size:0.85rem;color:var(--warn);margin-bottom:8px;"><strong>Did you mean one of these?</strong></div>
+      ${altCards}
+      <div class="alt-card" onclick="document.getElementById('voice-search-query').value='';document.getElementById('voice-search-query').focus();" style="opacity:0.6;">
+        <span class="alt-name">None of these — try a different search</span>
+      </div>
+    </div>
+  `;
+}
+
+function reIdentify(name) {
+  document.getElementById('voice-search-query').value = name;
+  identifySubject();
+}
+
+function confirmSubject(subject) {
+  confirmedSubject = subject;
+  searchExcludeIds = [];
+
+  // Hide step 1, show step 2
+  document.getElementById('search-step-identify').style.display = 'none';
+  const step2 = document.getElementById('search-step-clips');
+  step2.classList.remove('hidden');
+
+  // Show confirmed banner with sample suggestions
+  let samplesHint = '';
+  if (subject.suggested_samples && subject.suggested_samples.length > 0) {
+    samplesHint = `<div class="cs-samples-hint">Looking for: ${subject.suggested_samples.map(s => escHtml(s.title || s)).join(', ')}</div>`;
+  }
+  document.getElementById('confirmed-subject').innerHTML = `
+    <span class="cs-name">${escHtml(subject.name || subject.query)}</span>
+    ${samplesHint}
+    <span class="cs-change" onclick="resetSearch()">Change</span>
+  `;
+
+  // Auto-start clip discovery
+  findClips();
+}
+
+// ── Step 2: Find Clips (streaming) ──
+
+async function findClips() {
+  const subject = confirmedSubject;
+  if (!subject) return;
+
+  const progressWrap = document.getElementById('clips-progress');
+  const progressLog = document.getElementById('clips-progress-log');
+  const progressBar = document.getElementById('clips-progress-bar');
+  const progressStatus = document.getElementById('clips-progress-status');
+  const grid = document.getElementById('clips-grid');
+  const actions = document.getElementById('clips-actions');
+
+  progressLog.innerHTML = '';
+  progressBar.style.width = '0%';
+  progressStatus.textContent = 'Starting clip search...';
+  progressWrap.classList.remove('hidden');
+  actions.classList.add('hidden');
+
+  function log(msg, type = 'info') {
+    const line = document.createElement('div');
+    line.className = 'prog-line';
+    line.innerHTML = `<span class="prog-dot ${type}"></span> <span>${escHtml(msg)}</span>`;
+    progressLog.appendChild(line);
+    progressLog.scrollTop = progressLog.scrollHeight;
+  }
+
+  try {
+    const body = {
+      query: subject.query,
+      clip_queries: subject.clip_queries || [],
+      max_clips: 6,
+      exclude_ids: searchExcludeIds,
+    };
+
+    const resp = await fetch(API + '/find_clips', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let finalData = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop();
+
+      for (const part of parts) {
+        if (!part.trim()) continue;
+        let eventType = 'message';
+        let dataStr = '';
+        for (const line of part.split('\n')) {
+          if (line.startsWith('event: ')) eventType = line.slice(7).trim();
+          else if (line.startsWith('data: ')) dataStr = line.slice(6);
+        }
+        if (!dataStr) continue;
+        let ev;
+        try { ev = JSON.parse(dataStr); } catch { continue; }
+
+        if (eventType === 'progress') {
+          const stage = ev.stage || '';
+          const msg = ev.message || '';
+          let dotType = 'info';
+          if (stage === 'query_done') dotType = 'ok';
+          else if (stage === 'downloading') dotType = 'work';
+          else if (stage === 'candidates') dotType = 'ok';
+          log(msg, dotType);
+
+          // Progress bar
+          if (stage === 'query_done' && ev.total_matched != null) {
+            progressBar.style.width = Math.min(50, 10 + ev.total_matched * 3) + '%';
+          }
+          if (stage === 'downloading' && ev.total_clips) {
+            progressBar.style.width = (50 + 45 * ev.clip_index / ev.total_clips) + '%';
+          }
+          progressStatus.textContent = msg;
+
+          // Show candidates in log
+          if (stage === 'candidates' && ev.candidates) {
+            for (const c of ev.candidates) {
+              const scoreStr = c.score > 0 ? `+${c.score}` : c.score;
+              log(`  → ${c.title} [${scoreStr}] ${c.duration || '?'}s`, 'info');
+            }
+          }
+        } else if (eventType === 'clip') {
+          // A clip is ready — render it immediately
+          const clip = ev.clip;
+          if (!clip) continue;
+          log(ev.message || 'Clip ready', clip.has_embedding ? 'ok' : 'err');
+          progressBar.style.width = (50 + 45 * (ev.clip_index + 1) / ev.total_clips) + '%';
+
+          // Cache it
+          if (clip.video_id) {
+            searchExcludeIds.push(clip.video_id);
+            searchResultsCache[clip.video_id] = clip;
+          }
+
+          // Render clip card
+          grid.innerHTML += renderClipCard(clip);
+
+          // Hydrate audio immediately
+          if (clip.audio_base64 && clip.video_id) {
+            hydrateClipAudio(clip);
+          }
+        } else if (eventType === 'complete') {
+          finalData = ev;
+        } else if (eventType === 'error') {
+          throw new Error(ev.error || 'Clip search failed');
+        }
+      }
+      if (finalData) break;
+    }
+
+    progressBar.style.width = '100%';
+    const numOk = finalData ? finalData.num_with_embeddings : 0;
+    const numTotal = finalData ? finalData.num_clips : 0;
+    progressStatus.textContent = `Done — ${numOk}/${numTotal} clips with embeddings`;
+    log(`Search complete: ${numOk} usable clips`, numOk > 0 ? 'ok' : 'err');
+
+    actions.classList.remove('hidden');
+    setTimeout(() => { progressWrap.classList.add('hidden'); }, 4000);
+  } catch (e) {
+    log(String(e), 'err');
+    progressStatus.textContent = `Error: ${e}`;
+    actions.classList.remove('hidden');
+  }
+}
+
+function findMoreClips() {
+  findClips(); // uses searchExcludeIds to get different results
+}
+
+function renderClipCard(clip) {
+  const vid = clip.video_id || '';
+  const titleSafe = (clip.title || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  const status = clip.has_embedding ? 'clip-ready' : 'clip-failed';
+  const scoreStr = clip.title_score != null ? `<span class="clip-score">${clip.title_score > 0 ? '+' : ''}${clip.title_score}</span>` : '';
+
+  let isoHtml = '';
+  if (clip.isolation && clip.isolation.segments_kept != null) {
+    const iso = clip.isolation;
+    isoHtml = `<div class="clip-iso">Speaker isolated: ${iso.segments_kept}/${iso.total_segments} segments (${(iso.kept_duration_s || 0).toFixed(1)}s)</div>`;
+  }
+
+  const audioHtml = clip.audio_base64
+    ? `<audio class="clip-audio" id="clip-audio-${vid}" controls></audio>`
+    : '';
+
+  const actionsHtml = clip.has_embedding
+    ? `<div class="clip-actions">
+         <button class="clip-add-btn" onclick='addToPalette(${JSON.stringify(clip.embedding)}, "${titleSafe}", "${vid}")'>Add to Palette</button>
+       </div>`
+    : `<div class="clip-actions"><span style="color:var(--fail);font-size:0.75rem;">${escHtml(clip.error || 'No embedding')}</span></div>`;
+
+  return `<div class="clip-card ${status}" data-video-id="${vid}">
+    <div class="clip-header">
+      <span class="clip-title"><a href="${clip.url || '#'}" target="_blank">${escHtml(clip.title || 'Unknown')}</a></span>
+      <span class="clip-meta">${clip.duration || '?'}s</span>
+      ${scoreStr}
+    </div>
+    ${audioHtml}
+    ${isoHtml}
+    ${actionsHtml}
+  </div>`;
+}
+
+function hydrateClipAudio(clip) {
+  const audioEl = document.getElementById('clip-audio-' + clip.video_id);
+  if (!audioEl || !clip.audio_base64) return;
+  try {
+    const raw = atob(clip.audio_base64);
+    const bytes = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+    const pcm = new Float32Array(bytes.buffer);
+    const sr = clip.audio_sample_rate || 16000;
+    const wav = pcmToWav(pcm, sr);
+    audioEl.src = URL.createObjectURL(wav);
+  } catch (e) {
+    console.warn('Failed to hydrate clip audio', clip.video_id, e);
+  }
+}
+
+function resetSearch() {
+  confirmedSubject = null;
+  searchExcludeIds = [];
+  document.getElementById('search-step-identify').style.display = '';
+  document.getElementById('search-step-clips').classList.add('hidden');
+  document.getElementById('identify-results').innerHTML = '';
+  document.getElementById('clips-grid').innerHTML = '';
+  document.getElementById('clips-progress').classList.add('hidden');
+  document.getElementById('clips-actions').classList.add('hidden');
+}
+
+function useSearchEmbedding(embedding, title) {
+  refEmbedding = embedding;
+  document.getElementById('ref-embedding-info').textContent = `Using embedding from: "${title}" (${embedding.length}D)`;
+  document.getElementById('ref-embedding-info').classList.remove('hidden');
+}
+
+// ── Voice Palette ──
+const voicePalette = []; // { id, label, embedding, weight, audioB64, audioSr }
+
+function addToPalette(embedding, label, id) {
+  // Prevent duplicates
+  if (voicePalette.find(p => p.id === id)) {
+    document.getElementById('voice-search-status').textContent += ` — "${label}" already in palette`;
+    return;
+  }
+  // Get the cached search result with raw audio PCM data
+  const cached = searchResultsCache[id];
+  const pcmB64 = cached?.audio_base64 || null;
+  const pcmSr = cached?.audio_sample_rate || 16000;
+
+  // Get the blob URL from the audio player for playback
+  const resultEl = document.querySelector(`.search-result-item[data-video-id="${id}"]`);
+  const audioEl = resultEl?.querySelector('audio');
+  const audioUrl = audioEl?.src || null;
+
+  voicePalette.push({
+    id, label, embedding, weight: 1.0,
+    audioUrl,          // blob URL for playback in palette
+    pcmBase64: pcmB64, // raw PCM float32 base64 for server-side analysis
+    sampleRate: pcmSr,
+  });
+  renderPalette();
+}
+
+function addUploadToPalette() {
+  if (!refEmbedding) { alert('Extract an embedding first'); return; }
+  const label = document.getElementById('ref-file').files[0]?.name || 'Uploaded audio';
+  const id = 'upload-' + Date.now();
+  const audioEl = document.getElementById('ref-player');
+  voicePalette.push({
+    id, label, embedding: refEmbedding, weight: 1.0,
+    audioUrl: audioEl?.src || null,
+    pcmBase64: refPcmB64 || null,  // raw PCM from the upload
+    sampleRate: refSampleRate,
+  });
+  renderPalette();
+}
+
+function renderPalette() {
+  const listEl = document.getElementById('palette-list');
+  const countEl = document.getElementById('palette-count');
+  const emptyEl = document.getElementById('palette-empty');
+  const clearBtn = document.getElementById('palette-clear-btn');
+  const normBtn = document.getElementById('palette-normalize-btn');
+
+  countEl.textContent = `${voicePalette.length} reference${voicePalette.length !== 1 ? 's' : ''}`;
+  clearBtn.style.display = voicePalette.length ? '' : 'none';
+  normBtn.style.display = voicePalette.length > 1 ? '' : 'none';
+  document.getElementById('palette-suggest-section').classList.toggle('hidden', voicePalette.length < 1);
+
+  if (!voicePalette.length) {
+    listEl.innerHTML = '<div class="palette-empty">No references added yet. Use "Add to Palette" from search results or upload a reference above.</div>';
+    return;
+  }
+
+  listEl.innerHTML = voicePalette.map((item, i) => `
+    <div class="palette-item" data-palette-idx="${i}">
+      <span class="pi-label">${item.label}</span>
+      ${item.audioUrl ? `<audio src="${item.audioUrl}" controls style="height:24px;max-width:140px;"></audio>` : ''}
+      <div class="pi-weight-group">
+        <span class="pi-weight-label">Weight:</span>
+        <input type="range" min="0" max="2" step="0.1" value="${item.weight}"
+               oninput="setPaletteWeight(${i}, this.value)">
+        <span class="pi-weight-val" id="pw-${i}">${item.weight.toFixed(1)}</span>
+      </div>
+      <button class="pi-remove" onclick="removePaletteItem(${i})" title="Remove">&times;</button>
+    </div>
+  `).join('');
+}
+
+function setPaletteWeight(idx, val) {
+  voicePalette[idx].weight = parseFloat(val);
+  document.getElementById('pw-' + idx).textContent = parseFloat(val).toFixed(1);
+}
+
+function removePaletteItem(idx) {
+  voicePalette.splice(idx, 1);
+  renderPalette();
+}
+
+function clearPalette() {
+  voicePalette.length = 0;
+  renderPalette();
+}
+
+function normalizePaletteWeights() {
+  const total = voicePalette.reduce((s, p) => s + p.weight, 0);
+  if (total > 0) {
+    voicePalette.forEach(p => p.weight = p.weight / total);
+    renderPalette();
+  }
+}
+
+// ── Voice Anatomy & Composer ──
+let anatomySchema = null;
+let advancedMode = false;
+
+async function loadAnatomySchema() {
+  try {
+    const r = await fetch(API + '/voice_anatomy');
+    const d = await r.json();
+    anatomySchema = d.elements;
+    buildAnatomyControls();
+  } catch (e) {
+    console.warn('Failed to load anatomy schema:', e);
+  }
+}
+
+function buildAnatomyControls() {
+  if (!anatomySchema) return;
+  const container = document.getElementById('anatomy-elements');
+  container.innerHTML = Object.entries(anatomySchema).map(([key, info]) => {
+    const examples = info.examples.slice(0, 6).join(', ');
+    return `<div class="anatomy-element">
+      <label>${info.label}</label>
+      <div class="ae-hint">${info.description} — e.g. ${examples}</div>
+      <input type="text" id="anatomy-${key}" placeholder="${examples}..." />
+    </div>`;
+  }).join('');
+}
+
+function toggleAnatomyMode() {
+  advancedMode = document.getElementById('anatomy-advanced-toggle').checked;
+  document.getElementById('anatomy-advanced').classList.toggle('hidden', !advancedMode);
+  if (advancedMode && !anatomySchema) loadAnatomySchema();
+}
+
+function getAnatomySpecs() {
+  if (!advancedMode || !anatomySchema) return {};
+  const specs = {};
+  for (const key of Object.keys(anatomySchema)) {
+    const val = document.getElementById('anatomy-' + key)?.value?.trim();
+    if (val) specs[key] = val;
+  }
+  return specs;
+}
+
+async function composeVoice() {
+  const desc = document.getElementById('compose-desc').value.trim();
+  const text = document.getElementById('compose-preview-text').value.trim();
+  const maxAttempts = parseInt(document.getElementById('compose-max-attempts').value);
+  const anatomySpecs = getAnatomySpecs();
+
+  if (!desc && !Object.keys(anatomySpecs).length) {
+    alert('Enter a voice description or fill in anatomy controls');
+    return;
+  }
+
+  const btn = document.getElementById('compose-btn');
+  const status = document.getElementById('compose-status');
+  btn.disabled = true; btn.textContent = 'Composing...';
+  status.textContent = 'Analyzing description, blending references, generating...';
+  document.getElementById('compose-preview-section').classList.remove('hidden');
+  document.getElementById('compose-quality-grid').classList.add('hidden');
+  document.getElementById('compose-result').classList.add('hidden');
+
+  const prog = startGenProgress('compose',
+    ['compose-step-prompt', 'compose-step-gen', 'compose-step-quality'],
+    ['Building voice prompt with AI...', 'Generating audio...', 'Analyzing quality...'],
+    5000);
+
+  if (!modelPollTimer) modelPollTimer = setInterval(pollModelStatus, 1000);
+
+  try {
+    const references = voicePalette
+      .filter(p => p.embedding)
+      .map(p => ({ embedding: p.embedding, weight: p.weight, label: p.label }));
+
+    const r = await fetch(API + '/compose', { method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        description: desc,
+        preview_text: text,
+        references,
+        anatomy: anatomySpecs,
+        max_attempts: maxAttempts,
+        min_mos: 2.5,
+      }),
+      signal: AbortSignal.timeout(300000) });
+    const d = await r.json();
+    prog.complete();
+    if (!d.success) throw new Error(d.error);
+
+    // Play audio
+    const raw = atob(d.audio_base64);
+    const pcm = new Float32Array(new Uint8Array(raw.length).map((_,i)=>raw.charCodeAt(i)).buffer);
+    const wav = pcmToWav(pcm, d.sample_rate);
+    document.getElementById('compose-preview-audio').src = URL.createObjectURL(wav);
+
+    // Show composed prompt
+    const comp = d.composition || {};
+    if (comp.prompt) {
+      document.getElementById('compose-prompt').textContent = 'Prompt: ' + comp.prompt;
+      document.getElementById('compose-result').classList.remove('hidden');
+    }
+
+    // Show auto-decomposition in basic mode
+    if (!advancedMode && comp.auto_decomposition) {
+      const autoGrid = document.getElementById('anatomy-auto-grid');
+      const entries = Object.entries(comp.auto_decomposition).filter(([k]) => k !== '_general');
+      if (entries.length > 0) {
+        autoGrid.innerHTML = entries.map(([key, vals]) => {
+          const label = anatomySchema?.[key]?.label || key;
+          return `<div class="anatomy-chip"><span class="ac-label">${label}:</span><span class="ac-value">${Array.isArray(vals) ? vals.join(', ') : vals}</span></div>`;
+        }).join('');
+        document.getElementById('anatomy-auto').classList.remove('hidden');
+      }
+    }
+
+    // Show quality metrics
+    const q = d.quality || {};
+    const qMos = q.mos || {};
+    const qAsr = q.asr || {};
+    const qSignal = q.signal || {};
+    const qOverall = q.overall || {};
+    const qualityGrid = document.getElementById('compose-quality-grid');
+    qualityGrid.innerHTML = '';
+    const metrics = [
+      { label: 'MOS', value: qMos.mos?.toFixed(2) || 'N/A', threshold: [3, 2.5] },
+      { label: 'Overall', value: qOverall.score?.toFixed(2) || 'N/A', threshold: [3, 2] },
+      { label: 'WER', value: qAsr.wer != null ? (qAsr.wer * 100).toFixed(1) + '%' : 'N/A', threshold: [15, 30], invert: true },
+      { label: 'SNR', value: qSignal.snr_db != null ? qSignal.snr_db.toFixed(1) + 'dB' : 'N/A', threshold: [20, 10] },
+      { label: 'Refs', value: comp.blend?.num_references || 0 },
+      { label: 'Attempts', value: d.total_attempts || 1 },
+    ];
+    for (const m of metrics) {
+      const div = document.createElement('div');
+      div.className = 'quality-metric';
+      let cls = '';
+      if (m.threshold) {
+        const numVal = parseFloat(m.value);
+        if (!isNaN(numVal)) {
+          cls = m.invert
+            ? (numVal <= m.threshold[0] ? 'good' : numVal <= m.threshold[1] ? 'ok' : 'bad')
+            : (numVal >= m.threshold[0] ? 'good' : numVal >= m.threshold[1] ? 'ok' : 'bad');
+        }
+      }
+      div.innerHTML = `<div class="metric-label">${m.label}</div><div class="metric-value ${cls}">${m.value}</div>`;
+      qualityGrid.appendChild(div);
+    }
+    qualityGrid.classList.remove('hidden');
+
+    const blendInfo = comp.blend ? ` | ${comp.blend.num_references} ref(s): ${comp.blend.labels.join(', ')}` : '';
+    status.textContent = `MOS: ${qMos.mos?.toFixed(2) || 'N/A'} | ${d.total_attempts} attempt(s)${blendInfo}`;
+
+    // Store for clone generation
+    lastComposeDescription = comp.prompt || desc;
+    lastComposeAnatomy = anatomySpecs;
+
+    // Show clone section
+    document.getElementById('clone-section').classList.remove('hidden');
+  } catch (e) {
+    prog.fail();
+    status.textContent = `Error: ${e}`;
+  }
+  btn.disabled = false; btn.textContent = 'Compose Voice';
+  await pollModelStatus();
+}
+
+// Load anatomy schema on page load
+loadAnatomySchema();
+
+// Suggest mode hint toggle
+document.getElementById('suggest-mode')?.addEventListener('change', function() {
+  const hint = document.getElementById('suggest-mode-hint');
+  hint.textContent = this.value === 'commonalities'
+    ? 'Finds shared characteristics across all references — what they have in common.'
+    : 'Combines the unique and distinctive qualities from each reference into one voice.';
+});
+
+function clearSearchResults() {
+  resetSearch();
+}
+
+// ── Suggest from palette ──
+async function suggestFromPalette() {
+  if (!voicePalette.length) { alert('Add references to the palette first'); return; }
+
+  const mode = document.getElementById('suggest-mode').value;
+  const btn = document.getElementById('suggest-btn');
+  btn.disabled = true; btn.textContent = 'Analyzing...';
+
+  try {
+    // Build references with raw PCM data for server-side analysis
+    const refs = [];
+    let refsWithAudio = 0;
+    for (const item of voicePalette) {
+      const ref = { label: item.label, sample_rate: item.sampleRate || 16000 };
+      if (item.pcmBase64) {
+        ref.audio_base64 = item.pcmBase64;
+        refsWithAudio++;
+      }
+      refs.push(ref);
+    }
+
+    if (refsWithAudio === 0) {
+      alert('No audio data available for analysis. Try adding references from search results (they include audio clips).');
+      btn.disabled = false; btn.textContent = 'Suggest';
+      return;
+    }
+
+    const r = await fetch(API + '/suggest_from_palette', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ references: refs, mode }),
+      signal: AbortSignal.timeout(60000),
+    });
+    const d = await r.json();
+    if (!d.success) throw new Error(d.error);
+
+    // Show suggestion
+    document.getElementById('suggest-description').textContent = d.description;
+    document.getElementById('suggest-explanation').textContent = d.explanation;
+
+    const anatomyGrid = document.getElementById('suggest-anatomy-grid');
+    if (d.anatomy) {
+      anatomyGrid.innerHTML = Object.entries(d.anatomy).map(([key, val]) => {
+        const label = anatomySchema?.[key]?.label || key;
+        return `<div class="anatomy-chip"><span class="ac-label">${label}:</span><span class="ac-value">${val}</span></div>`;
+      }).join('');
+    }
+
+    document.getElementById('suggest-result').classList.remove('hidden');
+
+  } catch (e) {
+    alert('Suggestion failed: ' + e);
+  }
+  btn.disabled = false; btn.textContent = 'Suggest';
+}
+
+function useSuggestion() {
+  const desc = document.getElementById('suggest-description').textContent;
+  document.getElementById('compose-desc').value = desc;
+  // Scroll to composer
+  document.getElementById('compose-desc').scrollIntoView({ behavior: 'smooth' });
+  document.getElementById('compose-desc').focus();
+}
+
+// ── Clone sample generation ──
+let lastCloneWavBlob = null;
+let lastComposeDescription = '';
+let lastComposeAnatomy = {};
+
+async function generateCloneSample() {
+  const desc = lastComposeDescription || document.getElementById('compose-desc').value.trim();
+  if (!desc) { alert('Compose a voice first, or enter a description'); return; }
+
+  const btn = document.getElementById('clone-btn');
+  const status = document.getElementById('clone-status');
+  const duration = parseInt(document.getElementById('clone-duration').value);
+  btn.disabled = true; btn.textContent = 'Generating...';
+  status.textContent = `Generating ${duration}s of varied speech for cloning...`;
+  document.getElementById('clone-preview-section').classList.remove('hidden');
+  document.getElementById('clone-download-section').classList.add('hidden');
+
+  if (!modelPollTimer) modelPollTimer = setInterval(pollModelStatus, 1000);
+
+  try {
+    const r = await fetch(API + '/generate_clone_sample', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        description: desc,
+        anatomy: lastComposeAnatomy,
+        duration_target_s: duration,
+      }),
+      signal: AbortSignal.timeout(600000),
+    });
+    const d = await r.json();
+    if (!d.success) throw new Error(d.error);
+
+    // Play audio
+    const raw = atob(d.audio_base64);
+    const pcm = new Float32Array(new Uint8Array(raw.length).map((_,i) => raw.charCodeAt(i)).buffer);
+    lastCloneWavBlob = pcmToWav(pcm, d.sample_rate);
+    document.getElementById('clone-preview-audio').src = URL.createObjectURL(lastCloneWavBlob);
+
+    const badge = d.clone_ready
+      ? '<span class="clone-ready-badge ready">Clone Ready</span>'
+      : '<span class="clone-ready-badge short">May be too short</span>';
+    status.innerHTML = `${d.duration_s}s | ${d.num_sentences} sentences | ${d.sample_rate}Hz ${badge}`;
+
+    document.getElementById('clone-info').textContent =
+      `Recommended for: ${d.recommended_engines.join(', ')}`;
+    document.getElementById('clone-download-section').classList.remove('hidden');
+
+  } catch (e) {
+    status.textContent = `Error: ${e}`;
+  }
+  btn.disabled = false; btn.textContent = 'Generate Clone Sample';
+  await pollModelStatus();
+}
+
+function downloadCloneSample() {
+  if (!lastCloneWavBlob) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(lastCloneWavBlob);
+  a.download = 'clone-sample.wav';
+  a.click();
+}
+
+function saveCloneAsSample() {
+  if (!lastCloneWavBlob) return;
+  // TODO: integrate with the main app's voice sample system
+  alert('Clone sample saved! Use this WAV file with Chatterbox or XTTS for voice cloning.');
+  downloadCloneSample();
+}
+
+function pcmToWav(samples, sr) {
+  const n = samples.length;
+  const buf = new ArrayBuffer(44 + n*2);
+  const v = new DataView(buf);
+  const w = (o,s) => { for(let i=0;i<s.length;i++) v.setUint8(o+i,s.charCodeAt(i)); };
+  w(0,'RIFF'); v.setUint32(4,36+n*2,true); w(8,'WAVE'); w(12,'fmt ');
+  v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+  v.setUint32(24,sr,true); v.setUint32(28,sr*2,true); v.setUint16(32,2,true);
+  v.setUint16(34,16,true); w(36,'data'); v.setUint32(40,n*2,true);
+  for(let i=0;i<n;i++){const s=Math.max(-1,Math.min(1,samples[i]));v.setInt16(44+i*2,s<0?s*0x8000:s*0x7FFF,true);}
+  return new Blob([buf],{type:'audio/wav'});
+}
+</script>
+</body>
+</html>
