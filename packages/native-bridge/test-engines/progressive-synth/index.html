@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Progressive Synthesis — Test Workbench</title>
+  <style>
+    :root {
+      --bg: #1a1a2e;
+      --surface: #16213e;
+      --surface2: #0f3460;
+      --accent: #e94560;
+      --accent2: #0ea5e9;
+      --text: #e0e0e0;
+      --text2: #a0a0b0;
+      --success: #22c55e;
+      --warn: #f59e0b;
+      --error: #ef4444;
+      --mono: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      --radius: 8px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--sans); background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    .app { max-width: 1400px; margin: 0 auto; padding: 20px; }
+    header { text-align: center; margin-bottom: 24px; }
+    header h1 { font-size: 1.5rem; color: var(--accent); }
+    header p { color: var(--text2); font-size: 0.85rem; margin-top: 4px; }
+
+    .status-bar { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 12px 0; }
+    .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .status-dot.up { background: var(--success); }
+    .status-dot.down { background: var(--error); }
+    .status-dot.checking { background: var(--warn); animation: pulse 1s infinite; }
+    @keyframes pulse { 50% { opacity: 0.4; } }
+    .status-label { font-size: 0.8rem; color: var(--text2); }
+
+    .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+    .panel { background: var(--surface); border-radius: var(--radius); padding: 16px; }
+    .panel h2 { font-size: 1rem; margin-bottom: 12px; color: var(--accent2); }
+    .panel h3 { font-size: 0.85rem; margin: 12px 0 6px; color: var(--text2); }
+
+    textarea { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--surface2); border-radius: 6px; padding: 10px; font-family: var(--mono); font-size: 0.85rem; resize: vertical; }
+    select, button, input[type="text"] { background: var(--surface2); color: var(--text); border: 1px solid #2a3a5e; border-radius: 6px; padding: 6px 12px; font-size: 0.8rem; cursor: pointer; }
+    button:hover { background: var(--accent); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button:disabled:hover { background: var(--surface2); }
+
+    .controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
+    .controls label { font-size: 0.8rem; color: var(--text2); }
+
+    .sample-btns { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+    .sample-btn { font-size: 0.75rem; padding: 4px 10px; background: var(--bg); }
+    .sample-btn:hover { background: var(--accent2); }
+
+    /* Progress section */
+    .progress-section { margin: 16px 0; }
+    .progress-bar-wrap { background: var(--bg); border-radius: 4px; height: 8px; overflow: hidden; margin: 6px 0; }
+    .progress-bar { height: 100%; background: linear-gradient(90deg, var(--accent2), var(--accent)); transition: width 0.3s ease; border-radius: 4px; }
+    .progress-label { font-size: 0.78rem; color: var(--text2); display: flex; justify-content: space-between; }
+    .progress-phase { font-size: 0.72rem; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+
+    /* Element timeline */
+    .element-timeline { margin: 12px 0; max-height: 400px; overflow-y: auto; }
+    .elem-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid #ffffff08; font-size: 0.78rem; cursor: pointer; transition: background 0.1s; }
+    .elem-row:hover { background: rgba(255,255,255,0.03); }
+    .elem-row.active { background: rgba(14,165,233,0.1); border-left: 2px solid var(--accent2); }
+    .elem-row.synthesizing { background: rgba(249,115,22,0.08); }
+    .elem-row.pending { opacity: 0.5; }
+    .elem-row.done { opacity: 1; }
+    .elem-row.error { opacity: 0.6; color: var(--error); }
+    .elem-status { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+    .elem-status.pending { background: var(--surface2); }
+    .elem-status.synthesizing { background: var(--warn); animation: pulse 0.8s infinite; }
+    .elem-status.done { background: var(--success); }
+    .elem-status.error { background: var(--error); }
+    .elem-type { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; padding: 1px 6px; border-radius: 3px; white-space: nowrap; }
+    .elem-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text2); }
+    .elem-dur { font-size: 0.7rem; color: var(--text2); white-space: nowrap; }
+
+    /* Type colors */
+    .et-heading { background: #7c3aed33; color: #a78bfa; }
+    .et-paragraph { background: #3b82f633; color: #93c5fd; }
+    .et-dialogue { background: #f59e0b33; color: #fbbf24; }
+    .et-dialogue_attr { background: #f59e0b22; color: #d4a017; }
+    .et-list_item { background: #22c55e33; color: #86efac; }
+    .et-blockquote { background: #6366f133; color: #a5b4fc; }
+    .et-code_block { background: #71717a33; color: #a1a1aa; }
+    .et-separator { background: #ef444433; color: #fca5a5; }
+    .et-title { background: #e9456033; color: #e94560; }
+    .et-subtitle { background: #e9456022; color: #c73a52; }
+
+    /* Playback */
+    .playback-controls { display: flex; gap: 8px; align-items: center; margin: 12px 0; }
+    .play-btn { padding: 8px 20px; font-weight: 600; background: var(--accent); border: none; }
+    .play-btn:disabled { background: var(--surface2); }
+    .time-display { font-family: var(--mono); font-size: 0.85rem; color: var(--text2); }
+
+    /* Stats */
+    .stats-bar { display: flex; gap: 12px; flex-wrap: wrap; margin: 10px 0; }
+    .stat-chip { background: var(--bg); padding: 4px 10px; border-radius: 4px; font-size: 0.75rem; }
+    .stat-chip .stat-val { color: var(--accent2); font-weight: 700; }
+
+    /* Highlight view */
+    .highlight-view { background: var(--bg); border-radius: 6px; padding: 12px; font-size: 0.9rem; line-height: 1.7; max-height: 300px; overflow-y: auto; white-space: pre-wrap; }
+    .hl-word { transition: background 0.1s; padding: 1px 0; }
+    .hl-word.active { background: rgba(14,165,233,0.3); border-radius: 2px; }
+    .hl-elem-active { background: rgba(233,69,96,0.08); }
+
+    .log { background: var(--bg); border-radius: 6px; padding: 8px; font-family: var(--mono); font-size: 0.7rem; max-height: 150px; overflow-y: auto; color: var(--text2); margin-top: 12px; }
+    .log-entry { padding: 2px 0; border-bottom: 1px solid #ffffff08; }
+    .log-entry.error { color: var(--error); }
+    .log-entry.success { color: var(--success); }
+
+    .test-banner { background: #f59e0b22; border: 1px solid #f59e0b44; border-radius: var(--radius); padding: 8px 16px; text-align: center; font-size: 0.75rem; color: var(--warn); margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="test-banner">TEST WORKBENCH — Phase 4: Progressive Document Synthesis — Remove when testing complete</div>
+
+    <header>
+      <h1>Progressive Document Synthesis — Test Workbench</h1>
+      <p>Synthesize documents element-by-element with voice scheme parameters and real-time progress</p>
+    </header>
+
+    <div class="status-bar">
+      <span class="status-dot checking" id="status-dot-ws"></span>
+      <span class="status-label" id="status-label-ws">WS Server</span>
+      <span class="status-dot checking" id="status-dot-doc"></span>
+      <span class="status-label" id="status-label-doc">Doc Analyzer</span>
+    </div>
+
+    <div class="layout">
+      <!-- Left: Input & Controls -->
+      <div class="panel">
+        <h2>Input</h2>
+
+        <div class="controls">
+          <label>Format:</label>
+          <select id="format-select">
+            <option value="auto">Auto-detect</option>
+            <option value="plain">Plain Text</option>
+            <option value="markdown">Markdown</option>
+            <option value="html">HTML</option>
+          </select>
+          <label>Alignment:</label>
+          <select id="alignment-select">
+            <option value="word">Word</option>
+            <option value="word+syllable">Word + Syllable</option>
+            <option value="none">None</option>
+          </select>
+          <label><input type="checkbox" id="ai-check" /> AI Enhancement</label>
+        </div>
+
+        <div class="controls">
+          <label>Voice:</label>
+          <select id="voice-select" style="min-width:200px;">
+            <option value="">Default (macOS)</option>
+          </select>
+          <label>Rate:</label>
+          <input type="range" id="rate-slider" min="0.5" max="2.0" step="0.1" value="1.0" style="width:80px;" />
+          <span id="rate-val" style="font-size:0.78rem;color:var(--text2);width:30px;">1.0</span>
+        </div>
+
+        <textarea id="text-input" rows="14" placeholder="Paste or type text to synthesize progressively..."></textarea>
+
+        <h3>Sample Texts</h3>
+        <div class="sample-btns">
+          <button class="sample-btn" data-sample="novel">Novel Excerpt</button>
+          <button class="sample-btn" data-sample="markdown">Markdown Doc</button>
+          <button class="sample-btn" data-sample="dialogue">Dialogue</button>
+          <button class="sample-btn" data-sample="mixed">Mixed Content</button>
+        </div>
+
+        <div class="controls" style="margin-top:12px;">
+          <button id="synth-btn" disabled style="padding:8px 24px;font-weight:600;background:var(--accent);">Synthesize Document</button>
+          <button id="stop-btn" disabled>Stop</button>
+        </div>
+
+        <div class="log" id="log"></div>
+      </div>
+
+      <!-- Right: Progress & Playback -->
+      <div class="panel">
+        <h2>Synthesis Progress</h2>
+
+        <div class="progress-section">
+          <div class="progress-phase" id="progress-phase">Idle</div>
+          <div class="progress-bar-wrap">
+            <div class="progress-bar" id="progress-bar" style="width:0%"></div>
+          </div>
+          <div class="progress-label">
+            <span id="progress-text">0 / 0 elements</span>
+            <span id="progress-pct">0%</span>
+          </div>
+        </div>
+
+        <div id="stats-bar" class="stats-bar"></div>
+
+        <h3>Element Timeline</h3>
+        <div class="element-timeline" id="element-timeline">
+          <div style="color:var(--text2);font-size:0.78rem;padding:20px;text-align:center;">No synthesis yet. Enter text and click Synthesize Document.</div>
+        </div>
+
+        <h3>Playback</h3>
+        <div class="playback-controls">
+          <button class="play-btn" id="play-btn" disabled>Play</button>
+          <button id="pause-btn" disabled>Pause</button>
+          <span class="time-display" id="time-display">0:00 / 0:00</span>
+        </div>
+
+        <h3>Word Highlight</h3>
+        <div class="highlight-view" id="highlight-view">
+          <span style="color:var(--text2);">Synthesize a document to see word-level highlighting during playback.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+// ── Phase 4 Test Workbench Script ──
+
+const WS_URL = 'ws://localhost:21740';
+const DOC_SERVER = 'http://127.0.0.1:21750';
+
+const textInput = document.getElementById('text-input');
+const formatSelect = document.getElementById('format-select');
+const alignmentSelect = document.getElementById('alignment-select');
+const aiCheck = document.getElementById('ai-check');
+const voiceSelect = document.getElementById('voice-select');
+const rateSlider = document.getElementById('rate-slider');
+const rateVal = document.getElementById('rate-val');
+const synthBtn = document.getElementById('synth-btn');
+const stopBtn = document.getElementById('stop-btn');
+const statusDotWs = document.getElementById('status-dot-ws');
+const statusLabelWs = document.getElementById('status-label-ws');
+const statusDotDoc = document.getElementById('status-dot-doc');
+const statusLabelDoc = document.getElementById('status-label-doc');
+const progressPhase = document.getElementById('progress-phase');
+const progressBar = document.getElementById('progress-bar');
+const progressText = document.getElementById('progress-text');
+const progressPct = document.getElementById('progress-pct');
+const statsBar = document.getElementById('stats-bar');
+const elementTimeline = document.getElementById('element-timeline');
+const playBtn = document.getElementById('play-btn');
+const pauseBtn = document.getElementById('pause-btn');
+const timeDisplay = document.getElementById('time-display');
+const highlightView = document.getElementById('highlight-view');
+const logEl = document.getElementById('log');
+
+let ws = null;
+let pendingResolve = null;
+let collectedChunks = [];
+let collectedBoundaries = [];
+let collectedElementStarts = [];
+let collectedElementCompletes = [];
+let synthesisResult = null;
+let audioCtx = null;
+let audioSource = null;
+let audioBuffer = null;
+let playStartTime = 0;
+let playOffset = 0;
+let isPlaying = false;
+let animFrame = null;
+
+// ── Logging ──
+function log(msg, level = '') {
+  const entry = document.createElement('div');
+  entry.className = `log-entry ${level}`;
+  entry.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  logEl.prepend(entry);
+  while (logEl.children.length > 80) logEl.lastChild.remove();
+}
+
+// ── Rate slider ──
+rateSlider.addEventListener('input', () => {
+  rateVal.textContent = parseFloat(rateSlider.value).toFixed(1);
+});
+
+// ── WebSocket connection ──
+function connectWs() {
+  return new Promise((resolve, reject) => {
+    ws = new WebSocket(WS_URL);
+    const timer = setTimeout(() => { ws.close(); reject(new Error('timeout')); }, 3000);
+    ws.onopen = () => {
+      clearTimeout(timer);
+      statusDotWs.className = 'status-dot up';
+      statusLabelWs.textContent = 'WS Server online';
+      synthBtn.disabled = false;
+      log('WebSocket connected', 'success');
+      resolve();
+    };
+    ws.onerror = () => {
+      clearTimeout(timer);
+      statusDotWs.className = 'status-dot down';
+      statusLabelWs.textContent = 'WS Server offline';
+      synthBtn.disabled = true;
+      reject(new Error('WebSocket connection failed'));
+    };
+    ws.onclose = () => {
+      statusDotWs.className = 'status-dot down';
+      statusLabelWs.textContent = 'WS disconnected';
+      synthBtn.disabled = true;
+    };
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        handleMessage(msg);
+      } catch {}
+    };
+  });
+}
+
+function handleMessage(msg) {
+  switch (msg.type) {
+    case 'audio_chunk':
+      collectedChunks.push(msg);
+      break;
+    case 'word_boundary':
+      collectedBoundaries.push(msg);
+      break;
+    case 'element_start':
+      collectedElementStarts.push(msg);
+      updateTimelineElement(msg.element_index, 'synthesizing', msg.element_type, msg.text_preview);
+      break;
+    case 'element_complete':
+      collectedElementCompletes.push(msg);
+      updateTimelineElement(msg.element_index, 'done', null, null, msg.duration_ms);
+      break;
+    case 'document_progress':
+      updateProgress(msg);
+      break;
+    case 'document_synthesis_complete':
+      finishSynthesis(msg);
+      break;
+    case 'voice_list':
+      populateVoices(msg.voices || []);
+      break;
+    case 'error':
+      log(`Error: ${msg.message}`, 'error');
+      if (pendingResolve) { pendingResolve = null; resetSynthState(); }
+      break;
+  }
+}
+
+// ── Check doc server health ──
+async function checkDocHealth() {
+  try {
+    const resp = await fetch(`${DOC_SERVER}/health`);
+    if (resp.ok) {
+      statusDotDoc.className = 'status-dot up';
+      statusLabelDoc.textContent = 'Doc Analyzer online';
+    } else throw new Error();
+  } catch {
+    statusDotDoc.className = 'status-dot down';
+    statusLabelDoc.textContent = 'Doc Analyzer offline';
+  }
+}
+
+// ── Voices ──
+function populateVoices(voices) {
+  voiceSelect.innerHTML = '<option value="">Default (macOS)</option>';
+  for (const v of voices) {
+    const opt = document.createElement('option');
+    opt.value = v.id;
+    opt.textContent = `${v.name} [${v.engine}]`;
+    voiceSelect.appendChild(opt);
+  }
+  log(`Loaded ${voices.length} voices`);
+}
+
+function loadVoices() {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'list_voices', id: '__voices__' }));
+  }
+}
+
+// ── Progress ──
+let timelineElements = [];
+
+function initTimeline(totalElements) {
+  timelineElements = [];
+  elementTimeline.innerHTML = '';
+  for (let i = 0; i < totalElements; i++) {
+    const row = document.createElement('div');
+    row.className = 'elem-row pending';
+    row.dataset.idx = i;
+    row.innerHTML = `
+      <span class="elem-status pending"></span>
+      <span class="elem-type et-paragraph">?</span>
+      <span class="elem-text">Pending...</span>
+      <span class="elem-dur"></span>
+    `;
+    row.addEventListener('click', () => seekToElement(i));
+    elementTimeline.appendChild(row);
+    timelineElements.push(row);
+  }
+}
+
+function updateTimelineElement(idx, status, type, text, durationMs) {
+  if (idx >= timelineElements.length) return;
+  const row = timelineElements[idx];
+  row.className = `elem-row ${status}`;
+  const dot = row.querySelector('.elem-status');
+  dot.className = `elem-status ${status}`;
+  if (type) {
+    const typeEl = row.querySelector('.elem-type');
+    typeEl.className = `elem-type et-${type}`;
+    typeEl.textContent = type;
+  }
+  if (text) {
+    row.querySelector('.elem-text').textContent = text.length > 60 ? text.slice(0, 57) + '...' : text;
+  }
+  if (durationMs != null) {
+    row.querySelector('.elem-dur').textContent = `${(durationMs / 1000).toFixed(1)}s`;
+  }
+  // Auto-scroll to current element
+  row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+function updateProgress(msg) {
+  const pct = Math.round(msg.progress * 100);
+  progressPhase.textContent = msg.phase.toUpperCase();
+  progressBar.style.width = `${pct}%`;
+  progressText.textContent = `${msg.elements_completed} / ${msg.total_elements} elements`;
+  progressPct.textContent = `${pct}%`;
+
+  if (msg.total_elements > 0 && timelineElements.length === 0) {
+    initTimeline(msg.total_elements);
+  }
+}
+
+// ── Synthesis ──
+function resetSynthState() {
+  collectedChunks = [];
+  collectedBoundaries = [];
+  collectedElementStarts = [];
+  collectedElementCompletes = [];
+  synthesisResult = null;
+  stopPlayback();
+  synthBtn.disabled = false;
+  stopBtn.disabled = true;
+}
+
+async function synthesizeDocument() {
+  const text = textInput.value.trim();
+  if (!text) { log('No text to synthesize', 'error'); return; }
+  if (!ws || ws.readyState !== WebSocket.OPEN) { log('WebSocket not connected', 'error'); return; }
+
+  resetSynthState();
+  synthBtn.disabled = true;
+  stopBtn.disabled = false;
+
+  progressPhase.textContent = 'STARTING';
+  progressBar.style.width = '0%';
+  progressText.textContent = '0 / 0 elements';
+  progressPct.textContent = '0%';
+  elementTimeline.innerHTML = '';
+  timelineElements = [];
+  statsBar.innerHTML = '';
+
+  const id = crypto.randomUUID();
+  log(`Starting progressive synthesis: ${text.length} chars`);
+
+  const request = {
+    type: 'synthesize_document',
+    id,
+    text,
+    voice_id: voiceSelect.value || undefined,
+    rate: parseFloat(rateSlider.value),
+    pitch: 1.0,
+    volume: 1.0,
+    alignment: alignmentSelect.value,
+    format: formatSelect.value,
+    use_ai: aiCheck.checked,
+    analyze_quality: false,
+    quality_analyzers: [],
+  };
+
+  ws.send(JSON.stringify(request));
+}
+
+function finishSynthesis(msg) {
+  progressPhase.textContent = 'COMPLETE';
+  progressBar.style.width = '100%';
+  progressPct.textContent = '100%';
+
+  log(`Synthesis complete: ${msg.total_elements} elements, ${(msg.total_duration_ms / 1000).toFixed(1)}s total`, 'success');
+
+  // Decode and combine audio
+  const sortedChunks = collectedChunks.sort((a, b) => a.sequence - b.sequence);
+  const sampleRate = sortedChunks[0]?.sample_rate || 22050;
+  const channels = sortedChunks[0]?.channels || 1;
+
+  const pcmArrays = sortedChunks.map(c => decodeBase64Pcm(c.data_base64));
+  const totalLen = pcmArrays.reduce((s, a) => s + a.length, 0);
+  const combined = new Float32Array(totalLen);
+  let off = 0;
+  for (const arr of pcmArrays) { combined.set(arr, off); off += arr.length; }
+
+  synthesisResult = {
+    samples: combined,
+    sampleRate,
+    channels,
+    boundaries: collectedBoundaries,
+    elementStarts: collectedElementStarts,
+    elementCompletes: collectedElementCompletes,
+    totalDurationMs: msg.total_duration_ms,
+    totalElements: msg.total_elements,
+  };
+
+  // Stats
+  const chips = [
+    `<span class="stat-val">${msg.total_elements}</span> elements`,
+    `<span class="stat-val">${(msg.total_duration_ms / 1000).toFixed(1)}s</span> audio`,
+    `<span class="stat-val">${collectedBoundaries.length}</span> words`,
+    `<span class="stat-val">${sortedChunks.length}</span> chunks`,
+  ];
+  statsBar.innerHTML = chips.map(c => `<span class="stat-chip">${c}</span>`).join('');
+
+  // Build audio buffer
+  audioCtx = audioCtx || new AudioContext();
+  const frames = Math.floor(combined.length / channels);
+  audioBuffer = audioCtx.createBuffer(channels, frames, sampleRate);
+  for (let ch = 0; ch < channels; ch++) {
+    const channelData = audioBuffer.getChannelData(ch);
+    for (let i = 0; i < frames; i++) {
+      channelData[i] = combined[i * channels + ch];
+    }
+  }
+
+  // Build highlight view
+  buildHighlightView();
+
+  playBtn.disabled = false;
+  pauseBtn.disabled = false;
+  synthBtn.disabled = false;
+  stopBtn.disabled = true;
+  timeDisplay.textContent = `0:00 / ${formatTime(msg.total_duration_ms)}`;
+}
+
+// ── Highlight view ──
+function buildHighlightView() {
+  if (!synthesisResult || !synthesisResult.boundaries.length) {
+    highlightView.innerHTML = '<span style="color:var(--text2);">No word data available.</span>';
+    return;
+  }
+  const spans = synthesisResult.boundaries.map((b, i) => {
+    return `<span class="hl-word" data-idx="${i}">${escHtml(b.word)}</span> `;
+  });
+  highlightView.innerHTML = spans.join('');
+}
+
+function updateHighlight(currentTimeMs) {
+  if (!synthesisResult) return;
+  const words = highlightView.querySelectorAll('.hl-word');
+  let activeIdx = -1;
+  for (let i = 0; i < synthesisResult.boundaries.length; i++) {
+    const b = synthesisResult.boundaries[i];
+    if (currentTimeMs >= b.start_time_ms && currentTimeMs < b.end_time_ms) {
+      activeIdx = i;
+      break;
+    }
+  }
+  words.forEach((w, i) => {
+    w.classList.toggle('active', i === activeIdx);
+  });
+
+  // Update active element in timeline
+  if (activeIdx >= 0) {
+    const b = synthesisResult.boundaries[activeIdx];
+    if (b.element_index != null) {
+      timelineElements.forEach((row, i) => {
+        row.classList.toggle('active', i === b.element_index);
+      });
+    }
+  }
+}
+
+// ── Playback ──
+function playAudio() {
+  if (!audioBuffer || !audioCtx) return;
+  if (isPlaying) stopPlayback();
+
+  audioSource = audioCtx.createBufferSource();
+  audioSource.buffer = audioBuffer;
+  audioSource.connect(audioCtx.destination);
+  audioSource.start(0, playOffset / 1000);
+  playStartTime = audioCtx.currentTime - playOffset / 1000;
+  isPlaying = true;
+  playBtn.textContent = 'Playing...';
+  playBtn.disabled = true;
+
+  audioSource.onended = () => {
+    isPlaying = false;
+    playBtn.textContent = 'Play';
+    playBtn.disabled = false;
+    playOffset = 0;
+    cancelAnimationFrame(animFrame);
+    updateHighlight(-1);
+    timelineElements.forEach(r => r.classList.remove('active'));
+  };
+
+  function tick() {
+    if (!isPlaying) return;
+    const currentMs = (audioCtx.currentTime - playStartTime) * 1000;
+    updateHighlight(currentMs);
+    timeDisplay.textContent = `${formatTime(currentMs)} / ${formatTime(synthesisResult.totalDurationMs)}`;
+    animFrame = requestAnimationFrame(tick);
+  }
+  tick();
+}
+
+function pausePlayback() {
+  if (!isPlaying) return;
+  playOffset = (audioCtx.currentTime - playStartTime) * 1000;
+  audioSource?.stop();
+  isPlaying = false;
+  playBtn.textContent = 'Resume';
+  playBtn.disabled = false;
+  cancelAnimationFrame(animFrame);
+}
+
+function stopPlayback() {
+  if (audioSource) {
+    try { audioSource.stop(); } catch {}
+    audioSource = null;
+  }
+  isPlaying = false;
+  playOffset = 0;
+  playBtn.textContent = 'Play';
+  playBtn.disabled = !audioBuffer;
+  cancelAnimationFrame(animFrame);
+}
+
+function seekToElement(elemIdx) {
+  if (!synthesisResult) return;
+  // Find first boundary for this element
+  const b = synthesisResult.boundaries.find(b => b.element_index === elemIdx);
+  if (b) {
+    playOffset = b.start_time_ms;
+    if (isPlaying) {
+      stopPlayback();
+      playAudio();
+    } else {
+      timeDisplay.textContent = `${formatTime(playOffset)} / ${formatTime(synthesisResult.totalDurationMs)}`;
+      updateHighlight(playOffset);
+    }
+    log(`Seeked to element ${elemIdx} at ${formatTime(playOffset)}`);
+  }
+}
+
+playBtn.addEventListener('click', playAudio);
+pauseBtn.addEventListener('click', pausePlayback);
+synthBtn.addEventListener('click', synthesizeDocument);
+stopBtn.addEventListener('click', () => {
+  resetSynthState();
+  progressPhase.textContent = 'STOPPED';
+  log('Synthesis stopped');
+});
+
+// ── Utility ──
+function escHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function formatTime(ms) {
+  const secs = Math.floor(ms / 1000);
+  const mins = Math.floor(secs / 60);
+  return `${mins}:${String(secs % 60).padStart(2, '0')}`;
+}
+
+function decodeBase64Pcm(b64) {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Float32Array(bytes.buffer);
+}
+
+// ── Samples ──
+const SAMPLES = {
+  novel: `Chapter 1: The Beginning
+
+The rain hammered against the windows of the old Victorian house. Sarah pressed her face against the cold glass, watching the drops race each other down the pane.
+
+"Do you think it will ever stop?" she asked, not turning around.
+
+Marcus looked up from his book. "It always does," he said quietly. "Eventually."
+
+She turned to face him, her eyes reflecting the grey light. "That's not very comforting."
+
+"It wasn't meant to be," he replied, turning a page. "It was meant to be true."
+
+* * *
+
+The next morning brought sunshine, as if the storm had never happened. Birds sang in the garden, and the wet grass sparkled like scattered diamonds.`,
+
+  markdown: `# Progressive Synthesis Demo
+
+## Overview
+
+This demonstrates **element-by-element** document synthesis with voice scheme parameters applied per element.
+
+### Key Features
+
+- Each element type gets its own rate, pitch, and volume
+- Pauses are inserted between elements automatically
+- Word-level timestamps span the entire document timeline
+
+## Architecture
+
+> The system analyzes document structure first, then synthesizes each element individually.
+
+### Code Example
+
+\`\`\`rust
+fn synthesize_document(elements: &[Element]) {
+    for elem in elements {
+        synthesize_single(elem);
+    }
+}
+\`\`\`
+
+---
+
+## Conclusion
+
+Progressive synthesis enables faster time-to-first-audio and per-element voice control.`,
+
+  dialogue: `"I can't believe you did that," Maria said, shaking her head.
+
+Tom shrugged. "What choice did I have?"
+
+"You always have a choice," she replied sharply. "That's what makes us human."
+
+He was quiet for a moment, staring at the floor. When he finally looked up, his eyes were red.
+
+"You're right," he whispered. "I'm sorry."
+
+Maria softened. She reached out and took his hand. "I know you are," she said gently. "But sorry doesn't fix everything."`,
+
+  mixed: `THE WANDERER'S GUIDE
+A Brief Introduction
+
+Welcome, dear reader, to this unusual collection of advice, stories, and observations gathered during my travels.
+
+PART I: LESSONS FROM THE ROAD
+
+Chapter 1: On Beginnings
+
+Every journey starts with a single step — or so they say. In my experience, most journeys start with a wrong turn.
+
+"You're lost again, aren't you?" the innkeeper asked.
+
+I studied the map. "Not lost," I insisted. "Temporarily uncertain of my position."
+
+He laughed. "That's what they all say."
+
+Some practical notes:
+
+- Always carry a compass
+- Pack light
+- Learn three phrases in every language
+
+> "Not all those who wander are lost." — J.R.R. Tolkien
+
+Although, I should note, a significant number of them are.`,
+};
+
+document.querySelectorAll('.sample-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    textInput.value = SAMPLES[btn.dataset.sample] || '';
+    log(`Loaded sample: ${btn.dataset.sample}`);
+  });
+});
+
+// Ctrl+Enter to synthesize
+textInput.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    e.preventDefault();
+    synthesizeDocument();
+  }
+});
+
+// ── Init ──
+async function init() {
+  log('Test workbench loaded');
+  checkDocHealth();
+  setInterval(checkDocHealth, 15000);
+
+  try {
+    await connectWs();
+    loadVoices();
+  } catch (e) {
+    log(`WebSocket: ${e.message}`, 'error');
+  }
+}
+
+init();
+
+  </script>
+</body>
+</html>

@@ -271,6 +271,8 @@ fn generate_simple_word_boundaries(
             confidence: None,
             phonemes: None,
             syllables: None,
+            element_index: None,
+            document_char_offset: None,
         })
         .collect()
 }

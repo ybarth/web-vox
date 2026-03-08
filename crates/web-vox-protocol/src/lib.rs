@@ -33,6 +33,8 @@ pub enum ClientMessage {
     GetServerStats,
     #[serde(rename = "analyze_document")]
     AnalyzeDocument(AnalyzeDocumentRequest),
+    #[serde(rename = "synthesize_document")]
+    SynthesizeDocument(SynthesizeDocumentRequest),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,6 +82,35 @@ pub struct AnalyzeDocumentRequest {
 
 fn default_doc_format() -> String {
     "auto".to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SynthesizeDocumentRequest {
+    pub id: String,
+    pub text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub voice_id: Option<String>,
+    #[serde(default = "default_rate")]
+    pub rate: f32,
+    #[serde(default = "default_pitch")]
+    pub pitch: f32,
+    #[serde(default = "default_volume")]
+    pub volume: f32,
+    #[serde(default = "default_alignment")]
+    pub alignment: String,
+    #[serde(default)]
+    pub analyze_quality: bool,
+    #[serde(default)]
+    pub quality_analyzers: Vec<String>,
+    /// Document format: "auto", "plain", "markdown", "html"
+    #[serde(default = "default_doc_format")]
+    pub format: String,
+    /// Use AI enhancement for document analysis
+    #[serde(default)]
+    pub use_ai: bool,
+    /// Optional custom voice scheme override
+    #[serde(default)]
+    pub voice_scheme: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -159,6 +190,14 @@ pub enum HostMessage {
     QualityScore(QualityScore),
     #[serde(rename = "document_analysis")]
     DocumentAnalysis(DocumentAnalysisResult),
+    #[serde(rename = "element_start")]
+    ElementStart(ElementStart),
+    #[serde(rename = "element_complete")]
+    ElementComplete(ElementComplete),
+    #[serde(rename = "document_progress")]
+    DocumentProgress(DocumentProgress),
+    #[serde(rename = "document_synthesis_complete")]
+    DocumentSynthesisComplete(DocumentSynthesisComplete),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -169,6 +208,9 @@ pub struct AudioChunk {
     pub is_final: bool,
     pub sample_rate: u32,
     pub channels: u16,
+    /// Element index within a document synthesis (progressive mode only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub element_index: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -188,6 +230,12 @@ pub struct WordBoundary {
     /// Syllable-level boundaries within this word.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub syllables: Option<Vec<SyllableBoundary>>,
+    /// Element index within a document synthesis (progressive mode only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub element_index: Option<u32>,
+    /// Character offset within the full document (progressive mode only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub document_char_offset: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -314,6 +362,44 @@ pub struct DocumentStats {
     pub analysis_time_ms: f64,
     #[serde(default)]
     pub ai_enhanced: bool,
+}
+
+// -- Phase 4: Progressive Document Synthesis Messages --
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ElementStart {
+    pub id: String,
+    pub element_index: u32,
+    pub element_type: String,
+    pub text_preview: String,
+    pub char_offset: usize,
+    pub char_length: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub voice: Option<DocumentVoiceMapping>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ElementComplete {
+    pub id: String,
+    pub element_index: u32,
+    pub duration_ms: f64,
+    pub pause_after_ms: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocumentProgress {
+    pub id: String,
+    pub elements_completed: u32,
+    pub total_elements: u32,
+    pub progress: f32,
+    pub phase: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocumentSynthesisComplete {
+    pub id: String,
+    pub total_elements: u32,
+    pub total_duration_ms: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -500,6 +586,8 @@ mod tests {
             confidence: None,
             phonemes: None,
             syllables: None,
+            element_index: None,
+            document_char_offset: None,
         });
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"word_boundary\""));

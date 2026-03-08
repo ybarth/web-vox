@@ -160,6 +160,8 @@ impl AlignmentClient {
                         })
                         .collect()
                 }),
+                element_index: None,
+                document_char_offset: None,
             })
             .collect();
 

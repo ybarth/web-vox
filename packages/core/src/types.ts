@@ -317,8 +317,108 @@ export interface NativeDocumentAnalysisResult {
   error?: string;
 }
 
+// -- Phase 4: Progressive Document Synthesis Types --
+
+export interface SynthesizeDocumentOptions extends SynthesisOptions {
+  format?: string;
+  useAi?: boolean;
+  voiceScheme?: Record<string, unknown>;
+}
+
+export interface ElementStart {
+  id: string;
+  elementIndex: number;
+  elementType: string;
+  textPreview: string;
+  charOffset: number;
+  charLength: number;
+  voice?: DocumentVoiceMapping;
+}
+
+export interface ElementComplete {
+  id: string;
+  elementIndex: number;
+  durationMs: number;
+  pauseAfterMs: number;
+}
+
+export interface DocumentProgress {
+  id: string;
+  elementsCompleted: number;
+  totalElements: number;
+  progress: number;
+  phase: 'analyzing' | 'synthesizing' | 'complete';
+}
+
+export interface DocumentSynthesisComplete {
+  id: string;
+  totalElements: number;
+  totalDurationMs: number;
+}
+
+export interface ElementSynthesisResult {
+  elementIndex: number;
+  elementType: string;
+  textPreview: string;
+  samples: Float32Array;
+  sampleRate: number;
+  channels: number;
+  wordTimestamps: WordTimestamp[];
+  durationMs: number;
+  pauseAfterMs: number;
+  charOffset: number;
+  charLength: number;
+}
+
+export interface DocumentSynthesisResult {
+  elements: ElementSynthesisResult[];
+  totalDurationMs: number;
+  combinedSamples: Float32Array;
+  combinedWordTimestamps: WordTimestamp[];
+  sampleRate: number;
+  channels: number;
+}
+
+export interface NativeElementStart {
+  id: string;
+  element_index: number;
+  element_type: string;
+  text_preview: string;
+  char_offset: number;
+  char_length: number;
+  voice?: {
+    rate: number;
+    pitch: number;
+    volume: number;
+    pause_before_ms: number;
+    pause_after_ms: number;
+    voice_hint?: string;
+  };
+}
+
+export interface NativeElementComplete {
+  id: string;
+  element_index: number;
+  duration_ms: number;
+  pause_after_ms: number;
+}
+
+export interface NativeDocumentProgress {
+  id: string;
+  elements_completed: number;
+  total_elements: number;
+  progress: number;
+  phase: string;
+}
+
+export interface NativeDocumentSynthesisComplete {
+  id: string;
+  total_elements: number;
+  total_duration_ms: number;
+}
+
 export interface NativeRequest {
-  type: 'synthesize' | 'cancel' | 'list_voices' | 'get_system_info' | 'validate_voice' | 'list_piper_catalog' | 'download_piper_voice' | 'list_voice_samples' | 'upload_voice_sample' | 'delete_voice_sample' | 'manage_server' | 'get_server_stats' | 'analyze_document';
+  type: 'synthesize' | 'cancel' | 'list_voices' | 'get_system_info' | 'validate_voice' | 'list_piper_catalog' | 'download_piper_voice' | 'list_voice_samples' | 'upload_voice_sample' | 'delete_voice_sample' | 'manage_server' | 'get_server_stats' | 'analyze_document' | 'synthesize_document';
   id?: string;
   text?: string;
   voice_id?: string;
@@ -339,7 +439,7 @@ export interface NativeRequest {
 }
 
 export interface NativeResponse {
-  type: 'audio_chunk' | 'word_boundary' | 'synthesis_complete' | 'voice_list' | 'error' | 'system_info' | 'voice_validation' | 'piper_catalog' | 'piper_download_complete' | 'voice_samples' | 'voice_sample_result' | 'server_manage_result' | 'server_stats' | 'quality_score' | 'document_analysis';
+  type: 'audio_chunk' | 'word_boundary' | 'synthesis_complete' | 'voice_list' | 'error' | 'system_info' | 'voice_validation' | 'piper_catalog' | 'piper_download_complete' | 'voice_samples' | 'voice_sample_result' | 'server_manage_result' | 'server_stats' | 'quality_score' | 'document_analysis' | 'element_start' | 'element_complete' | 'document_progress' | 'document_synthesis_complete';
   id?: string;
   [key: string]: unknown;
 }
@@ -369,6 +469,7 @@ export interface NativeAudioChunk {
   is_final: boolean;
   sample_rate: number;
   channels: number;
+  element_index?: number;
 }
 
 export interface NativePhonemeBoundary {
@@ -394,6 +495,8 @@ export interface NativeWordBoundary {
   confidence?: number;
   phonemes?: NativePhonemeBoundary[];
   syllables?: NativeSyllableBoundary[];
+  element_index?: number;
+  document_char_offset?: number;
 }
 
 export interface NativeVoiceDescriptor {

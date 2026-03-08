@@ -25,6 +25,7 @@ pub fn encode_chunks(
             is_final: true,
             sample_rate,
             channels,
+            element_index: None,
         });
         return chunks;
     }
@@ -38,6 +39,7 @@ pub fn encode_chunks(
             is_final,
             sample_rate,
             channels,
+            element_index: None,
         });
     }
 

@@ -94,7 +94,16 @@ Web-vox-pro is a meta-TTS platform forked from web-vox. It transforms multiple o
 - Test workbenches: `test-engines/doc-analyzer/index.html`, `test-engines/phase3/index.html` (standalone, removable)
 - **Not yet implemented:** Phase 3b (EPUB/DOCX/PDF), Phase 3c (voice-scheme-driven multi-voice synthesis)
 
-### Phase 4: Smart Loading & Progressive Chunking - PLANNED
+### Phase 4: Smart Loading & Progressive Chunking - COMPLETE
+- Protocol extended: `SynthesizeDocumentRequest`, `ElementStart`, `ElementComplete`, `DocumentProgress`, `DocumentSynthesisComplete`
+- `AudioChunk` and `WordBoundary` extended with optional `element_index` (+ `document_char_offset` on WordBoundary)
+- `ClientMessage::SynthesizeDocument` + 4 new `HostMessage` variants
+- `ws_server.rs` — `handle_synthesize_document()`: analyzes document via Phase 3, then synthesizes each element individually with per-element voice scheme parameters (rate × base rate, pitch × base pitch, volume × base volume), forced alignment, sonic time-stretch, pause insertion, and document-level word boundary offset mapping
+- Graceful fallback: if document analyzer is unavailable, treats entire text as single paragraph
+- TypeScript types mirrored: `SynthesizeDocumentOptions`, `ElementStart`, `ElementComplete`, `DocumentProgress`, `DocumentSynthesisComplete`, `ElementSynthesisResult`, `DocumentSynthesisResult`, native variants
+- `NativeBridgeEngine.synthesizeDocument()` — collects per-element audio/boundaries/metadata, groups by element_index, returns both per-element and combined results, with progress callback
+- `WebSocketTransport` — `document_synthesis_complete` added as terminal message type
+- Test workbench: `test-engines/progressive-synth/index.html` (standalone, removable) with progress bar, element timeline, word highlight, playback with element seek
 ### Phase 5: OCR/Vision & Spatial Coordinates - PLANNED
 ### Phase 6: SDK Packaging - PLANNED
 
@@ -103,7 +112,7 @@ Web-vox-pro is a meta-TTS platform forked from web-vox. It transforms multiple o
 - **Python servers:** All follow the same HTTP pattern with `/health` + task endpoints. Use `device_config.json` for CPU/GPU. Added to `SERVER_DEFS` in ws_server.rs.
 - **Rust clients:** All use `ureq` with the same probe/request pattern. See `alignment.rs` as template.
 - **Protocol changes:** Extend types in `crates/web-vox-protocol/src/lib.rs`, mirror in `packages/core/src/types.ts`.
-- **WordBoundary constructors:** All require `confidence: None, phonemes: None, syllables: None` fields.
+- **WordBoundary constructors:** All require `confidence: None, phonemes: None, syllables: None, element_index: None, document_char_offset: None` fields.
 
 ## Building
 

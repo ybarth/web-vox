@@ -500,6 +500,7 @@ fn handle_message_sync(msg: &ClientMessage) -> Vec<String> {
         ClientMessage::ManageServer(req) => handle_manage_server(req),
         ClientMessage::GetServerStats => handle_get_server_stats(),
         ClientMessage::AnalyzeDocument(req) => handle_analyze_document(req),
+        ClientMessage::SynthesizeDocument(req) => handle_synthesize_document(req),
     }
 }
 
@@ -950,6 +951,409 @@ fn handle_synthesize(req: &SynthesizeRequest) -> Vec<String> {
             responses.push(serde_json::to_string(&msg).unwrap());
         }
     }
+
+    responses
+}
+
+fn handle_synthesize_document(req: &SynthesizeDocumentRequest) -> Vec<String> {
+    let id = req.id.clone();
+    let mut responses = Vec::new();
+
+    println!(
+        "  [doc-synth] Progressive synthesis: {} chars, format={}, voice={:?}",
+        req.text.len(),
+        req.format,
+        req.voice_id
+    );
+
+    // Phase 1: Analyze the document into elements
+    responses.push(
+        serde_json::to_string(&HostMessage::DocumentProgress(DocumentProgress {
+            id: id.clone(),
+            elements_completed: 0,
+            total_elements: 0,
+            progress: 0.0,
+            phase: "analyzing".into(),
+        }))
+        .unwrap(),
+    );
+
+    let analyzer = DocumentAnalyzerClient::new(None);
+    let analysis = match analyzer.analyze(&req.text, Some(&req.format), req.use_ai) {
+        Ok(a) => a,
+        Err(e) => {
+            // Fallback: treat the whole text as a single paragraph element
+            println!("  [doc-synth] Analyzer unavailable ({}), using single-element fallback", e);
+            web_vox_native_bridge::tts::document_analyzer::DocumentAnalysis {
+                success: true,
+                format: Some("plain".into()),
+                elements: vec![web_vox_native_bridge::tts::document_analyzer::DocumentElement {
+                    element_type: "paragraph".into(),
+                    text: req.text.clone(),
+                    char_offset: 0,
+                    char_length: req.text.len(),
+                    level: 0,
+                    voice: None,
+                    position: None,
+                }],
+                stats: None,
+                error: None,
+            }
+        }
+    };
+
+    let elements = &analysis.elements;
+    let total_elements = elements.len() as u32;
+
+    println!(
+        "  [doc-synth] Analyzed: {} elements (format: {:?})",
+        total_elements,
+        analysis.format
+    );
+
+    responses.push(
+        serde_json::to_string(&HostMessage::DocumentProgress(DocumentProgress {
+            id: id.clone(),
+            elements_completed: 0,
+            total_elements,
+            progress: 0.0,
+            phase: "synthesizing".into(),
+        }))
+        .unwrap(),
+    );
+
+    // Phase 2: Synthesize element-by-element
+    let mut running_time_ms: f64 = 0.0;
+    let mut audio_sequence: u32 = 0;
+    let mut elements_completed: u32 = 0;
+
+    for (idx, element) in elements.iter().enumerate() {
+        let elem_idx = idx as u32;
+
+        // Skip empty elements (separators with no text)
+        if element.text.trim().is_empty() {
+            elements_completed += 1;
+            continue;
+        }
+
+        // Get voice scheme for this element
+        let voice = element.voice.as_ref();
+        let elem_rate = voice.map(|v| v.rate).unwrap_or(1.0);
+        let elem_pitch = voice.map(|v| v.pitch).unwrap_or(1.0);
+        let elem_volume = voice.map(|v| v.volume).unwrap_or(1.0);
+        let pause_before_ms = voice.map(|v| v.pause_before_ms).unwrap_or(0);
+        let pause_after_ms = voice.map(|v| v.pause_after_ms).unwrap_or(0);
+
+        // Compute effective parameters: base * element scheme
+        let effective_rate = req.rate * elem_rate;
+        let effective_pitch = req.pitch * elem_pitch;
+        let effective_volume = (req.volume * elem_volume).min(1.5);
+
+        // Send ElementStart
+        let text_preview = if element.text.len() > 80 {
+            format!("{}...", &element.text[..77])
+        } else {
+            element.text.clone()
+        };
+        responses.push(
+            serde_json::to_string(&HostMessage::ElementStart(ElementStart {
+                id: id.clone(),
+                element_index: elem_idx,
+                element_type: element.element_type.clone(),
+                text_preview,
+                char_offset: element.char_offset,
+                char_length: element.char_length,
+                voice: voice.map(|v| DocumentVoiceMapping {
+                    rate: v.rate,
+                    pitch: v.pitch,
+                    volume: v.volume,
+                    pause_before_ms: v.pause_before_ms,
+                    pause_after_ms: v.pause_after_ms,
+                    voice_hint: v.voice_hint.clone(),
+                }),
+            }))
+            .unwrap(),
+        );
+
+        // Insert pause_before as running time offset (silence gap)
+        if pause_before_ms > 0 {
+            running_time_ms += pause_before_ms as f64;
+        }
+
+        // Synthesize this element using a sub-request
+        let sub_req = SynthesizeRequest {
+            id: id.clone(),
+            text: element.text.clone(),
+            voice_id: req.voice_id.clone(),
+            rate: effective_rate,
+            pitch: effective_pitch,
+            volume: effective_volume,
+            alignment: req.alignment.clone(),
+            analyze_quality: false, // quality per-element would be too slow
+            quality_analyzers: vec![],
+        };
+
+        // Re-use the engine dispatch from handle_synthesize but inline here
+        // to get raw output before encoding
+        let voice_id_str = sub_req.voice_id.as_deref().unwrap_or("");
+        let engine = if voice_id_str.starts_with("chatterbox:") {
+            "chatterbox"
+        } else if voice_id_str.starts_with("piper:") {
+            "piper"
+        } else if voice_id_str.starts_with("espeak-ng:") {
+            "espeak-ng"
+        } else if voice_id_str.starts_with("kokoro:") {
+            "kokoro"
+        } else if voice_id_str.starts_with("coqui-xtts:") {
+            "coqui-xtts"
+        } else if voice_id_str.starts_with("coqui:") {
+            "coqui"
+        } else if voice_id_str.starts_with("qwen-clone:") {
+            "qwen-clone"
+        } else if voice_id_str.starts_with("qwen:") {
+            "qwen"
+        } else {
+            "macos"
+        };
+
+        let options = web_vox_native_bridge::tts::traits::SynthesisOptions {
+            voice_id: sub_req.voice_id.clone(),
+            rate: sub_req.rate,
+            pitch: sub_req.pitch,
+            volume: sub_req.volume,
+        };
+
+        let synth_result = match engine {
+            "chatterbox" => {
+                let samples_dir = find_voice_samples_dir();
+                match ChatterboxSynthesizer::new(None, &samples_dir) {
+                    Ok(cb) => cb.synthesize(&sub_req.text, &id, &options),
+                    Err(e) => Err(e),
+                }
+            }
+            "piper" => {
+                let piper_dir = find_test_engines_dir().join("piper");
+                let try_test_engines = PiperSynthesizer::new(&piper_dir);
+                let try_root = find_root_piper_dir().and_then(|d| PiperSynthesizer::new(&d).ok());
+                match (try_test_engines, try_root) {
+                    (Ok(mut piper), root) => {
+                        if let Some(root_piper) = root {
+                            for dir in root_piper.voices_dirs() {
+                                piper.add_voices_dir(dir.to_path_buf());
+                            }
+                        }
+                        piper.synthesize(&sub_req.text, &id, &options)
+                    }
+                    (Err(_), Some(piper)) => piper.synthesize(&sub_req.text, &id, &options),
+                    (Err(e), None) => Err(e),
+                }
+            }
+            "espeak-ng" => {
+                match EspeakSynthesizer::new() {
+                    Ok(espeak) => espeak.synthesize(&sub_req.text, &id, &options),
+                    Err(e) => Err(e),
+                }
+            }
+            "kokoro" => KokoroSynthesizer::new(None).synthesize(&sub_req.text, &id, &options),
+            "coqui" => CoquiSynthesizer::new(None).synthesize(&sub_req.text, &id, &options),
+            "qwen" => QwenSynthesizer::new(None).synthesize(&sub_req.text, &id, &options),
+            "coqui-xtts" => CoquiXttsSynthesizer::new(None).synthesize(&sub_req.text, &id, &options),
+            "qwen-clone" => QwenCloneSynthesizer::new(None).synthesize(&sub_req.text, &id, &options),
+            _ => {
+                #[cfg(target_os = "macos")]
+                {
+                    let synth = MacOsSynthesizer::new();
+                    let macos_options = web_vox_native_bridge::tts::traits::SynthesisOptions {
+                        voice_id: sub_req.voice_id.clone(),
+                        rate: 1.0,
+                        pitch: sub_req.pitch,
+                        volume: sub_req.volume,
+                    };
+                    synth.synthesize(&sub_req.text, &id, &macos_options)
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    Err(web_vox_native_bridge::tts::traits::TtsError::NotAvailable(
+                        "TTS not supported on this platform yet".into(),
+                    ))
+                }
+            }
+        };
+
+        match synth_result {
+            Ok(output) => {
+                // Forced alignment on this element
+                let word_boundaries = if sub_req.alignment != "none" {
+                    let alignment_client =
+                        web_vox_native_bridge::tts::alignment::AlignmentClient::new(None);
+                    match alignment_client.align(
+                        &output.samples,
+                        output.sample_rate,
+                        output.channels,
+                        &sub_req.text,
+                        &id,
+                        &sub_req.alignment,
+                    ) {
+                        Ok(aligned) => aligned,
+                        Err(_) => output.word_boundaries.clone(),
+                    }
+                } else {
+                    output.word_boundaries.clone()
+                };
+
+                // Sonic time-stretch
+                let speed = sub_req.rate;
+                let use_sonic = (speed - 1.0).abs() > 0.01;
+                let (final_samples, elem_duration_ms) = if use_sonic {
+                    let stretched = web_vox_native_bridge::audio::sonic::time_stretch(
+                        &output.samples,
+                        output.sample_rate,
+                        output.channels,
+                        speed,
+                    );
+                    let dur = if output.sample_rate > 0 && output.channels > 0 {
+                        (stretched.len() as f64 / output.channels as f64
+                            / output.sample_rate as f64)
+                            * 1000.0
+                    } else {
+                        0.0
+                    };
+                    (stretched, dur)
+                } else {
+                    (output.samples.clone(), output.total_duration_ms)
+                };
+
+                // Emit word boundaries with document-level offsets and timing
+                for wb in &word_boundaries {
+                    let mut scaled_wb = wb.clone();
+                    if use_sonic {
+                        scaled_wb.start_time_ms /= speed as f64;
+                        scaled_wb.end_time_ms /= speed as f64;
+                        if let Some(ref mut syllables) = scaled_wb.syllables {
+                            for s in syllables.iter_mut() {
+                                s.start_time_ms /= speed as f64;
+                                s.end_time_ms /= speed as f64;
+                            }
+                        }
+                        if let Some(ref mut phonemes) = scaled_wb.phonemes {
+                            for p in phonemes.iter_mut() {
+                                p.start_time_ms /= speed as f64;
+                                p.end_time_ms /= speed as f64;
+                            }
+                        }
+                    }
+                    // Shift to document timeline
+                    scaled_wb.start_time_ms += running_time_ms;
+                    scaled_wb.end_time_ms += running_time_ms;
+                    // Add document-level metadata
+                    scaled_wb.element_index = Some(elem_idx);
+                    scaled_wb.document_char_offset =
+                        Some(element.char_offset + scaled_wb.char_offset);
+
+                    let msg = HostMessage::WordBoundary(scaled_wb);
+                    responses.push(serde_json::to_string(&msg).unwrap());
+                }
+
+                // Encode audio chunks with element_index
+                let mut chunks = web_vox_native_bridge::audio::encoder::encode_chunks(
+                    &id,
+                    &final_samples,
+                    output.sample_rate,
+                    output.channels,
+                );
+                for chunk in &mut chunks {
+                    chunk.sequence = audio_sequence;
+                    chunk.element_index = Some(elem_idx);
+                    audio_sequence += 1;
+                    // Only mark is_final on the very last chunk of the very last element
+                    chunk.is_final = false;
+                    let msg = HostMessage::AudioChunk(chunk.clone());
+                    responses.push(serde_json::to_string(&msg).unwrap());
+                }
+
+                // ElementComplete
+                responses.push(
+                    serde_json::to_string(&HostMessage::ElementComplete(ElementComplete {
+                        id: id.clone(),
+                        element_index: elem_idx,
+                        duration_ms: elem_duration_ms,
+                        pause_after_ms,
+                    }))
+                    .unwrap(),
+                );
+
+                running_time_ms += elem_duration_ms;
+
+                println!(
+                    "  [doc-synth] Element {}/{} [{}] \"{}\" -> {:.1}ms",
+                    idx + 1,
+                    total_elements,
+                    element.element_type,
+                    truncate(&element.text, 30),
+                    elem_duration_ms,
+                );
+            }
+            Err(e) => {
+                eprintln!(
+                    "  [doc-synth] Element {} synthesis error: {}",
+                    idx, e
+                );
+                // Continue with other elements rather than failing completely
+            }
+        }
+
+        // Add pause_after
+        if pause_after_ms > 0 {
+            running_time_ms += pause_after_ms as f64;
+        }
+
+        elements_completed += 1;
+
+        // Send progress
+        responses.push(
+            serde_json::to_string(&HostMessage::DocumentProgress(DocumentProgress {
+                id: id.clone(),
+                elements_completed,
+                total_elements,
+                progress: elements_completed as f32 / total_elements as f32,
+                phase: "synthesizing".into(),
+            }))
+            .unwrap(),
+        );
+    }
+
+    // Mark the last audio chunk as final
+    // Walk backwards to find the last AudioChunk message and update its is_final
+    for resp in responses.iter_mut().rev() {
+        if resp.contains("\"type\":\"audio_chunk\"") {
+            if let Ok(mut msg) = serde_json::from_str::<serde_json::Value>(resp) {
+                msg["is_final"] = serde_json::Value::Bool(true);
+                *resp = serde_json::to_string(&msg).unwrap();
+            }
+            break;
+        }
+    }
+
+    // Final quality analysis on the last element's quality (optional, if requested)
+    // For now, skip quality on progressive mode — it would be too slow per-element.
+
+    // DocumentSynthesisComplete
+    responses.push(
+        serde_json::to_string(&HostMessage::DocumentSynthesisComplete(
+            DocumentSynthesisComplete {
+                id: id.clone(),
+                total_elements: elements_completed,
+                total_duration_ms: running_time_ms,
+            },
+        ))
+        .unwrap(),
+    );
+
+    println!(
+        "  [doc-synth] Complete: {} elements, {:.1}s total",
+        elements_completed,
+        running_time_ms / 1000.0
+    );
 
     responses
 }

@@ -87,6 +87,8 @@ define_class!(
                 confidence: None,
                 phonemes: None,
                 syllables: None,
+                element_index: None,
+                document_char_offset: None,
             });
         }
     }

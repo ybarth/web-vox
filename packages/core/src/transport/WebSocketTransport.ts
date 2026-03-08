@@ -64,7 +64,8 @@ export class WebSocketTransport implements TransportAdapter {
             || msg.type === 'voice_samples'
             || msg.type === 'voice_sample_result'
             || msg.type === 'server_manage_result'
-            || msg.type === 'server_stats';
+            || msg.type === 'server_stats'
+            || msg.type === 'document_synthesis_complete';
 
           if (msgId && this.pendingRequests.has(msgId)) {
             if (isTerminal) {

@@ -2,16 +2,24 @@ import type {
   EngineCapabilities,
   VoiceInfo,
   SynthesisOptions,
+  SynthesizeDocumentOptions,
   RawSynthesisResult,
   NativeAudioChunk,
   NativeWordBoundary,
   NativeVoiceDescriptor,
   NativeQualityScore,
   NativeDocumentAnalysisResult,
+  NativeElementStart,
+  NativeElementComplete,
+  NativeDocumentProgress,
+  NativeDocumentSynthesisComplete,
   WordTimestamp,
   QualityScore,
   DocumentAnalysisResult,
   DocumentElement,
+  DocumentProgress,
+  ElementSynthesisResult,
+  DocumentSynthesisResult,
   SystemInfo,
   VoiceValidation,
   PiperCatalogVoice,
@@ -45,6 +53,9 @@ export class NativeBridgeEngine implements EngineAdapter {
   private collectedChunks = new Map<string, NativeAudioChunk[]>();
   private collectedBoundaries = new Map<string, NativeWordBoundary[]>();
   private collectedQuality = new Map<string, NativeQualityScore>();
+  private collectedElementStarts = new Map<string, NativeElementStart[]>();
+  private collectedElementCompletes = new Map<string, NativeElementComplete[]>();
+  private progressCallbacks = new Map<string, (progress: DocumentProgress) => void>();
 
   constructor(private customTransport?: TransportAdapter) {}
 
@@ -107,6 +118,32 @@ export class NativeBridgeEngine implements EngineAdapter {
         case 'quality_score': {
           const qs = msg as unknown as NativeQualityScore;
           this.collectedQuality.set(id, qs);
+          break;
+        }
+        case 'element_start': {
+          const es = msg as unknown as NativeElementStart;
+          if (!this.collectedElementStarts.has(id)) this.collectedElementStarts.set(id, []);
+          this.collectedElementStarts.get(id)!.push(es);
+          break;
+        }
+        case 'element_complete': {
+          const ec = msg as unknown as NativeElementComplete;
+          if (!this.collectedElementCompletes.has(id)) this.collectedElementCompletes.set(id, []);
+          this.collectedElementCompletes.get(id)!.push(ec);
+          break;
+        }
+        case 'document_progress': {
+          const dp = msg as unknown as NativeDocumentProgress;
+          const cb = this.progressCallbacks.get(id);
+          if (cb) {
+            cb({
+              id: dp.id,
+              elementsCompleted: dp.elements_completed,
+              totalElements: dp.total_elements,
+              progress: dp.progress,
+              phase: dp.phase as DocumentProgress['phase'],
+            });
+          }
           break;
         }
       }
@@ -381,6 +418,158 @@ export class NativeBridgeEngine implements EngineAdapter {
       } : undefined,
       error: r.error,
     };
+  }
+
+  async synthesizeDocument(
+    text: string,
+    options: SynthesizeDocumentOptions,
+    onProgress?: (progress: DocumentProgress) => void,
+  ): Promise<DocumentSynthesisResult> {
+    if (!this.transport) throw new Error('Not initialized');
+
+    const id = crypto.randomUUID();
+    this.collectedChunks.set(id, []);
+    this.collectedBoundaries.set(id, []);
+    this.collectedElementStarts.set(id, []);
+    this.collectedElementCompletes.set(id, []);
+    if (onProgress) this.progressCallbacks.set(id, onProgress);
+
+    const response = await this.transport.send({
+      type: 'synthesize_document',
+      id,
+      text,
+      voice_id: options.voice,
+      rate: options.rate ?? 1.0,
+      pitch: options.pitch ?? 1.0,
+      volume: options.volume ?? 1.0,
+      alignment: options.alignment,
+      format: options.format ?? 'auto',
+      use_ai: options.useAi ?? false,
+      voice_scheme: options.voiceScheme,
+    });
+
+    if (response.type === 'error') {
+      this.cleanupDocSynth(id);
+      const errMsg = (response as unknown as { message: string }).message ?? 'Document synthesis failed';
+      throw new Error(errMsg);
+    }
+
+    const chunks = this.collectedChunks.get(id) ?? [];
+    const boundaries = this.collectedBoundaries.get(id) ?? [];
+    const elementStarts = this.collectedElementStarts.get(id) ?? [];
+    const elementCompletes = this.collectedElementCompletes.get(id) ?? [];
+    const completeMsg = response as unknown as NativeDocumentSynthesisComplete;
+    this.cleanupDocSynth(id);
+
+    const sampleRate = chunks[0]?.sample_rate ?? 22050;
+    const channels = chunks[0]?.channels ?? 1;
+
+    // Sort all chunks by sequence and decode
+    const sortedChunks = chunks.sort((a, b) => a.sequence - b.sequence);
+    const pcmArrays = sortedChunks.map(c => decodeBase64Pcm(c.data_base64));
+    const totalLength = pcmArrays.reduce((sum, arr) => sum + arr.length, 0);
+    const combinedSamples = new Float32Array(totalLength);
+    let offset = 0;
+    for (const arr of pcmArrays) {
+      combinedSamples.set(arr, offset);
+      offset += arr.length;
+    }
+
+    // Map all word boundaries
+    const combinedWordTimestamps: WordTimestamp[] = boundaries.map(b => ({
+      word: b.word,
+      charOffset: b.document_char_offset ?? b.char_offset,
+      charLength: b.char_length,
+      startTimeMs: b.start_time_ms,
+      endTimeMs: b.end_time_ms,
+      confidence: b.confidence,
+      phonemes: b.phonemes?.map(p => ({
+        phoneme: p.phoneme,
+        startTimeMs: p.start_time_ms,
+        endTimeMs: p.end_time_ms,
+      })),
+      syllables: b.syllables?.map(s => ({
+        text: s.text,
+        charOffset: s.char_offset,
+        startTimeMs: s.start_time_ms,
+        endTimeMs: s.end_time_ms,
+      })),
+    }));
+
+    // Group per-element results
+    const elementsMap = new Map<number, {
+      chunks: NativeAudioChunk[];
+      boundaries: NativeWordBoundary[];
+      start?: NativeElementStart;
+      complete?: NativeElementComplete;
+    }>();
+
+    for (const c of sortedChunks) {
+      if (c.element_index == null) continue;
+      if (!elementsMap.has(c.element_index)) elementsMap.set(c.element_index, { chunks: [], boundaries: [] });
+      elementsMap.get(c.element_index)!.chunks.push(c);
+    }
+    for (const b of boundaries) {
+      if (b.element_index == null) continue;
+      if (!elementsMap.has(b.element_index)) elementsMap.set(b.element_index, { chunks: [], boundaries: [] });
+      elementsMap.get(b.element_index)!.boundaries.push(b);
+    }
+    for (const es of elementStarts) {
+      if (!elementsMap.has(es.element_index)) elementsMap.set(es.element_index, { chunks: [], boundaries: [] });
+      elementsMap.get(es.element_index)!.start = es;
+    }
+    for (const ec of elementCompletes) {
+      if (!elementsMap.has(ec.element_index)) elementsMap.set(ec.element_index, { chunks: [], boundaries: [] });
+      elementsMap.get(ec.element_index)!.complete = ec;
+    }
+
+    const elements: ElementSynthesisResult[] = [];
+    for (const [elemIdx, data] of Array.from(elementsMap.entries()).sort((a, b) => a[0] - b[0])) {
+      const elemPcm = data.chunks.map(c => decodeBase64Pcm(c.data_base64));
+      const elemLen = elemPcm.reduce((s, a) => s + a.length, 0);
+      const elemSamples = new Float32Array(elemLen);
+      let off = 0;
+      for (const arr of elemPcm) { elemSamples.set(arr, off); off += arr.length; }
+
+      elements.push({
+        elementIndex: elemIdx,
+        elementType: data.start?.element_type ?? 'paragraph',
+        textPreview: data.start?.text_preview ?? '',
+        samples: elemSamples,
+        sampleRate,
+        channels,
+        wordTimestamps: data.boundaries.map(b => ({
+          word: b.word,
+          charOffset: b.document_char_offset ?? b.char_offset,
+          charLength: b.char_length,
+          startTimeMs: b.start_time_ms,
+          endTimeMs: b.end_time_ms,
+          confidence: b.confidence,
+        })),
+        durationMs: data.complete?.duration_ms ?? 0,
+        pauseAfterMs: data.complete?.pause_after_ms ?? 0,
+        charOffset: data.start?.char_offset ?? 0,
+        charLength: data.start?.char_length ?? 0,
+      });
+    }
+
+    return {
+      elements,
+      totalDurationMs: completeMsg.total_duration_ms,
+      combinedSamples,
+      combinedWordTimestamps,
+      sampleRate,
+      channels,
+    };
+  }
+
+  private cleanupDocSynth(id: string): void {
+    this.collectedChunks.delete(id);
+    this.collectedBoundaries.delete(id);
+    this.collectedQuality.delete(id);
+    this.collectedElementStarts.delete(id);
+    this.collectedElementCompletes.delete(id);
+    this.progressCallbacks.delete(id);
   }
 
   cancel(): void {

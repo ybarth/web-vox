@@ -39,6 +39,13 @@ export type {
   DocumentVoiceMapping,
   DocumentPosition,
   DocumentStats,
+  SynthesizeDocumentOptions,
+  ElementStart,
+  ElementComplete,
+  DocumentProgress,
+  DocumentSynthesisComplete,
+  ElementSynthesisResult,
+  DocumentSynthesisResult,
 } from './types.js';
 
 // Engine adapters
