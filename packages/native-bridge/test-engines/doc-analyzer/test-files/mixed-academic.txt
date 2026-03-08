@@ -1,0 +1,82 @@
+ABSTRACT
+
+This paper presents a novel approach to document-aware text-to-speech synthesis that leverages structural analysis to produce more natural and contextually appropriate audio output. We demonstrate that by detecting document elements — headings, dialogue, code blocks, quotations, and other structural features — and mapping them to distinct voice parameters, we can significantly improve listener comprehension and engagement.
+
+1. INTRODUCTION
+
+Text-to-speech (TTS) technology has made remarkable progress in recent years. Modern neural TTS systems can produce speech that is nearly indistinguishable from human recordings at the sentence level. However, when synthesizing longer documents, a significant gap remains between machine and human performance.
+
+"The problem is not how individual sentences sound," notes Dr. Elena Martinez of the Global Speech Institute, "but how they relate to each other in context."
+
+Consider a typical technical document. It contains headings that organize the content, code examples that require different treatment, quotations that carry distinct emphasis, and footnotes that serve a supplementary role. A skilled human reader naturally adjusts their voice for each of these elements. Current TTS systems do not.
+
+2. RELATED WORK
+
+Previous approaches to document-aware TTS fall into three categories:
+
+- Rule-based SSML annotation: Manual or semi-automatic markup of text with Speech Synthesis Markup Language tags. Effective but labor-intensive and brittle.
+- Statistical prosody modeling: Training models on audiobook data to learn prosodic patterns. Better generalization but limited structural awareness.
+- LLM-assisted analysis: Using large language models to interpret document structure. Promising but computationally expensive.
+
+Our approach combines elements of all three: a rule-based parser for structural detection, statistical models for voice parameter optimization, and optional LLM enhancement for ambiguous cases.
+
+3. METHODOLOGY
+
+3.1 Document Parsing
+
+We implement a multi-format parser that handles plain text, Markdown, and HTML. The parser identifies 20 distinct element types:
+
+  heading, paragraph, dialogue, dialogue_attr, list_item, blockquote,
+  code_block, code_inline, emphasis, strong, link, table_header, table_cell,
+  footnote, aside, separator, title, subtitle, caption, metadata
+
+Each element is annotated with:
+
+(a) Character offset and length in the source text
+(b) Hierarchical level (for nested structures)
+(c) Voice mapping parameters (rate, pitch, volume, pause timings)
+(d) Positional metadata (word offset, count, progress through document)
+
+3.2 Voice Scheme Design
+
+A "voice scheme" defines the mapping from element types to voice parameters. The default scheme is designed around audiobook conventions:
+
+  Headings:   rate 0.85x, pitch 1.1, volume 1.1, 800ms pause before
+  Dialogue:   rate 1.05x, pitch 1.05, hint "expressive"
+  Code:       rate 0.8x,  pitch 0.95, hint "technical"
+  Blockquote: rate 0.9x,  pitch 1.05, hint "formal"
+
+Schemes can be customized per document or per reader preference.
+
+4. RESULTS
+
+We evaluated our system on a corpus of 50 documents across five genres: fiction, technical documentation, news articles, legal text, and academic papers.
+
+NOTE: All evaluations were conducted with human raters (n=24) using a 5-point MOS scale.
+
+Key findings:
+
+- Document-aware synthesis scored 4.2/5.0 versus 3.4/5.0 for flat synthesis
+- The largest improvement was in fiction (+1.3 points), where dialogue detection significantly improved naturalness
+- Technical documents showed the second-largest gain (+0.9 points), driven by proper code block handling
+- Legal text showed the smallest improvement (+0.4 points), suggesting that the formal, uniform style of legal writing benefits less from structural variation
+
+5. CONCLUSION
+
+We have demonstrated that structural awareness significantly improves TTS quality for long-form documents. Our approach is lightweight, extensible, and compatible with any underlying TTS engine.
+
+Future work will explore:
+
+- Multi-voice assignment (different speakers for dialogue characters)
+- Audio effects (reverb for quoted speech, spatial positioning)
+- Cross-document learning (adapting voice schemes to reader preferences over time)
+
+ACKNOWLEDGMENTS
+
+The authors thank the WebVox open-source community for their contributions to the underlying TTS infrastructure.
+
+REFERENCES
+
+[1] Martinez, E. et al. "Prosodic Modeling for Long-Form Speech Synthesis." ICASSP 2025.
+[2] Chen, M. "Open-Source Neural TTS: A Survey." ArXiv preprint, 2025.
+[3] Sharma, P. "The Uncanny Ear: Why Humans Can Still Detect Synthetic Speech." Nature Machine Intelligence, 2026.

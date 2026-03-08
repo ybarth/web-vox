@@ -9,7 +9,8 @@ import {
   type PiperCatalogVoice,
   type VoiceSampleInfo,
   type ServerProcessStats,
-  type VoiceProfileSummary,
+  type DocumentAnalysisResult,
+  type DocumentElement,
 } from '@web-vox/core';
 
 // @ts-ignore — lamejs has no types
@@ -88,25 +89,8 @@ const cloneEngineSelect = document.getElementById('clone-engine-select') as HTML
 const stackDotWs = document.getElementById('stack-dot-ws') as HTMLSpanElement;
 const stackDotAlignment = document.getElementById('stack-dot-alignment') as HTMLSpanElement;
 const stackDotQuality = document.getElementById('stack-dot-quality') as HTMLSpanElement;
-const stackDotDesigner = document.getElementById('stack-dot-designer') as HTMLSpanElement;
+const stackDotDocAnalyzer = document.getElementById('stack-dot-doc-analyzer') as HTMLSpanElement;
 const stackSummary = document.getElementById('stack-summary') as HTMLSpanElement;
-
-// Voice designer modal
-const voiceDesignerBtn = document.getElementById('voice-designer-btn') as HTMLButtonElement;
-const designerModal = document.getElementById('designer-modal') as HTMLDivElement;
-const designerDescription = document.getElementById('designer-description') as HTMLTextAreaElement;
-const designerPreviewText = document.getElementById('designer-preview-text') as HTMLInputElement;
-const designerGenerateBtn = document.getElementById('designer-generate-btn') as HTMLButtonElement;
-const designerPreviewSection = document.getElementById('designer-preview-section') as HTMLElement;
-const designerPreviewPlayer = document.getElementById('designer-preview-player') as HTMLAudioElement;
-const designerSaveBtn = document.getElementById('designer-save-btn') as HTMLButtonElement;
-const designerBlendList = document.getElementById('designer-blend-list') as HTMLDivElement;
-const designerBlendBtn = document.getElementById('designer-blend-btn') as HTMLButtonElement;
-const designerBlendResult = document.getElementById('designer-blend-result') as HTMLDivElement;
-const designerBlendSaveBtn = document.getElementById('designer-blend-save-btn') as HTMLButtonElement;
-const designerProfilesList = document.getElementById('designer-profiles-list') as HTMLDivElement;
-const designerStatus = document.getElementById('designer-status') as HTMLSpanElement;
-const designerModalClose = document.getElementById('designer-modal-close') as HTMLButtonElement;
 
 // Server dashboard
 const serverDashboardBtn = document.getElementById('server-dashboard-btn') as HTMLButtonElement;
@@ -1955,414 +1939,6 @@ serverDashboard.addEventListener('click', (e) => {
   if (e.target === serverDashboard) closeServerDashboard();
 });
 
-// ── Voice Designer ──────────────────────────────────────────
-
-let designerLastAudioB64: string | null = null;
-let designerLastSampleRate = 22050;
-let designerLastDescription = '';
-let designerLastBlendEmbedding: number[] | null = null;
-
-async function openDesignerModal() {
-  designerModal.hidden = false;
-  designerStatus.textContent = '';
-  await refreshDesignerProfiles();
-  await refreshDesignerBlendList();
-  checkGeminiStatus();
-}
-
-function closeDesignerModal() {
-  designerModal.hidden = true;
-}
-
-async function refreshDesignerProfiles() {
-  try {
-    const profiles = await nativeEngine.listVoiceProfiles();
-    if (profiles.length === 0) {
-      designerProfilesList.innerHTML = '<div class="designer-profiles-empty">No voice profiles saved yet.</div>';
-      return;
-    }
-    designerProfilesList.innerHTML = profiles.map((p: VoiceProfileSummary) => {
-      const date = p.createdAt ? new Date(p.createdAt * 1000).toLocaleDateString() : '';
-      const badges = [
-        p.hasEmbedding ? '<span class="profile-badge">Embedding</span>' : '',
-        p.hasReferenceAudio ? '<span class="profile-badge">Audio</span>' : '',
-      ].filter(Boolean).join(' ');
-      return `<div class="designer-profile-item" data-id="${p.id}">
-        <div class="profile-info">
-          <strong>${p.name}</strong>
-          <span class="profile-desc">${p.description || ''}</span>
-          <span class="profile-meta">${date} ${badges}</span>
-        </div>
-        <button type="button" class="profile-delete-btn" data-id="${p.id}" title="Delete profile">&#10005;</button>
-      </div>`;
-    }).join('');
-
-    // Wire up delete buttons
-    designerProfilesList.querySelectorAll('.profile-delete-btn').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
-        const id = (e.currentTarget as HTMLElement).dataset.id!;
-        if (!confirm('Delete this voice profile?')) return;
-        try {
-          await nativeEngine.deleteVoiceProfile(id);
-          log('Voice profile deleted', 'success');
-          await refreshDesignerProfiles();
-        } catch (err) {
-          log(`Failed to delete profile: ${err}`, 'error');
-        }
-      });
-    });
-  } catch (err) {
-    designerProfilesList.innerHTML = `<div class="designer-profiles-empty">Failed to load profiles: ${err}</div>`;
-  }
-}
-
-async function refreshDesignerBlendList() {
-  try {
-    const samples = await nativeEngine.listVoiceSamples();
-    if (samples.length === 0) {
-      designerBlendList.innerHTML = '<div class="designer-blend-empty">Upload voice samples in the Voice Cloning panel first.</div>';
-      designerBlendBtn.disabled = true;
-      return;
-    }
-    designerBlendList.innerHTML = samples.map((s: VoiceSampleInfo) => {
-      const sizeMb = (s.size_bytes / 1024 / 1024).toFixed(1);
-      return `<div class="designer-blend-item">
-        <label>
-          <input type="checkbox" class="blend-check" data-name="${s.name}" />
-          <span class="blend-name">${s.name}</span>
-          <span class="blend-size">${sizeMb} MB</span>
-        </label>
-        <input type="range" class="blend-weight" data-name="${s.name}" min="0" max="100" value="50" />
-        <span class="blend-weight-val">50%</span>
-      </div>`;
-    }).join('');
-
-    // Wire up weight sliders
-    designerBlendList.querySelectorAll('.blend-weight').forEach(slider => {
-      slider.addEventListener('input', (e) => {
-        const target = e.target as HTMLInputElement;
-        const valSpan = target.nextElementSibling as HTMLSpanElement;
-        valSpan.textContent = `${target.value}%`;
-      });
-    });
-
-    // Wire up checkboxes to enable/disable blend button
-    designerBlendList.querySelectorAll('.blend-check').forEach(cb => {
-      cb.addEventListener('change', () => {
-        const checked = designerBlendList.querySelectorAll('.blend-check:checked');
-        designerBlendBtn.disabled = checked.length < 2;
-      });
-    });
-  } catch (err) {
-    designerBlendList.innerHTML = `<div class="designer-blend-empty">Failed to load samples: ${err}</div>`;
-    designerBlendBtn.disabled = true;
-  }
-}
-
-async function handleDesignGenerate() {
-  const description = designerDescription.value.trim();
-  const previewText = designerPreviewText.value.trim();
-
-  if (!description) {
-    designerStatus.textContent = 'Please enter a voice description.';
-    return;
-  }
-
-  designerGenerateBtn.disabled = true;
-  designerGenerateBtn.textContent = 'Generating...';
-  designerStatus.textContent = 'Generating voice preview (this may take a minute)...';
-
-  try {
-    const result = await nativeEngine.designVoice(description, previewText);
-    if (result.success && result.audioBase64) {
-      designerLastAudioB64 = result.audioBase64;
-      designerLastSampleRate = result.sampleRate || 22050;
-      designerLastDescription = description;
-
-      // Decode PCM f32 to WAV for preview playback
-      const pcmBytes = Uint8Array.from(atob(result.audioBase64), c => c.charCodeAt(0));
-      const pcmFloat32 = new Float32Array(pcmBytes.buffer);
-      const wavBlob = pcmToWavBlob(pcmFloat32, designerLastSampleRate);
-      designerPreviewPlayer.src = URL.createObjectURL(wavBlob);
-      designerPreviewSection.hidden = false;
-
-      designerStatus.textContent = `Voice generated: ${result.durationMs?.toFixed(0)}ms`;
-      log(`Voice designed: "${description.substring(0, 50)}..." (${result.durationMs?.toFixed(0)}ms)`, 'success');
-    } else {
-      designerStatus.textContent = `Error: ${result.error || 'Unknown error'}`;
-      log(`Voice design failed: ${result.error}`, 'error');
-    }
-  } catch (err) {
-    designerStatus.textContent = `Error: ${err}`;
-    log(`Voice design error: ${err}`, 'error');
-  } finally {
-    designerGenerateBtn.disabled = false;
-    designerGenerateBtn.textContent = 'Generate';
-  }
-}
-
-function pcmToWavBlob(samples: Float32Array, sampleRate: number): Blob {
-  const numSamples = samples.length;
-  const buffer = new ArrayBuffer(44 + numSamples * 2);
-  const view = new DataView(buffer);
-
-  // WAV header
-  const writeStr = (offset: number, str: string) => {
-    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
-  };
-  writeStr(0, 'RIFF');
-  view.setUint32(4, 36 + numSamples * 2, true);
-  writeStr(8, 'WAVE');
-  writeStr(12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true);
-  view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true);
-  writeStr(36, 'data');
-  view.setUint32(40, numSamples * 2, true);
-
-  for (let i = 0; i < numSamples; i++) {
-    const s = Math.max(-1, Math.min(1, samples[i]));
-    view.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
-  }
-
-  return new Blob([buffer], { type: 'audio/wav' });
-}
-
-async function handleDesignSave() {
-  if (!designerLastAudioB64) return;
-
-  const name = prompt('Enter a name for this voice profile:', designerLastDescription.substring(0, 40));
-  if (!name) return;
-
-  designerStatus.textContent = 'Saving profile...';
-  try {
-    const result = await nativeEngine.saveVoiceProfile(
-      name,
-      designerLastDescription,
-      undefined,
-      designerLastAudioB64,
-      designerLastSampleRate,
-    );
-    if (result.success) {
-      log(`Voice profile saved: "${name}" (${result.profileId})`, 'success');
-      designerStatus.textContent = `Profile saved: ${name}`;
-      await refreshDesignerProfiles();
-    } else {
-      designerStatus.textContent = `Save failed: ${result.error}`;
-    }
-  } catch (err) {
-    designerStatus.textContent = `Save error: ${err}`;
-    log(`Failed to save profile: ${err}`, 'error');
-  }
-}
-
-async function handleBlend() {
-  const checked = designerBlendList.querySelectorAll('.blend-check:checked') as NodeListOf<HTMLInputElement>;
-  if (checked.length < 2) {
-    designerStatus.textContent = 'Select at least 2 samples to blend.';
-    return;
-  }
-
-  designerBlendBtn.disabled = true;
-  designerBlendBtn.textContent = 'Blending...';
-  designerStatus.textContent = 'Extracting embeddings and blending...';
-
-  // Note: In a full implementation, we'd fetch the actual audio data for each sample
-  // from the server and pass it to blendVoices. For now, we show the UI flow.
-  designerStatus.textContent = 'Blending requires the voice designer server to be running.';
-  log('Voice blending: server-side embedding extraction triggered', 'info');
-
-  designerBlendBtn.disabled = false;
-  designerBlendBtn.textContent = 'Blend Selected';
-}
-
-async function handleBlendSave() {
-  if (!designerLastBlendEmbedding) return;
-
-  const name = prompt('Enter a name for this blended voice profile:');
-  if (!name) return;
-
-  try {
-    const result = await nativeEngine.saveVoiceProfile(
-      name,
-      'Blended voice',
-      designerLastBlendEmbedding,
-      undefined,
-      22050,
-    );
-    if (result.success) {
-      log(`Blended profile saved: "${name}"`, 'success');
-      designerStatus.textContent = `Blend saved: ${name}`;
-      await refreshDesignerProfiles();
-    } else {
-      designerStatus.textContent = `Save failed: ${result.error}`;
-    }
-  } catch (err) {
-    log(`Failed to save blended profile: ${err}`, 'error');
-  }
-}
-
-voiceDesignerBtn.addEventListener('click', openDesignerModal);
-designerModalClose.addEventListener('click', closeDesignerModal);
-designerModal.addEventListener('click', (e) => {
-  if (e.target === designerModal) closeDesignerModal();
-});
-designerGenerateBtn.addEventListener('click', handleDesignGenerate);
-designerSaveBtn.addEventListener('click', handleDesignSave);
-designerBlendBtn.addEventListener('click', handleBlend);
-designerBlendSaveBtn.addEventListener('click', handleBlendSave);
-
-// ── Gemini AI Test Zone ──────────────────────────────────
-
-const geminiStatusBadge = document.getElementById('gemini-status-badge') as HTMLDivElement;
-const geminiLabel = geminiStatusBadge.querySelector('.gemini-label') as HTMLSpanElement;
-const geminiTestInput = document.getElementById('gemini-test-input') as HTMLTextAreaElement;
-const geminiInterpretBtn = document.getElementById('gemini-interpret-btn') as HTMLButtonElement;
-const geminiIdentifyBtn = document.getElementById('gemini-identify-btn') as HTMLButtonElement;
-const geminiDecomposeBtn = document.getElementById('gemini-decompose-btn') as HTMLButtonElement;
-const geminiTestResult = document.getElementById('gemini-test-result') as HTMLDivElement;
-const DESIGNER_URL = 'http://127.0.0.1:21749';
-
-async function checkGeminiStatus() {
-  try {
-    const resp = await fetch(`${DESIGNER_URL}/health`);
-    if (!resp.ok) throw new Error('not ok');
-    const data = await resp.json();
-
-    // Try a quick classify to confirm Gemini is actually wired up
-    const testResp = await fetch(`${DESIGNER_URL}/interpret`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input: 'test' }),
-    });
-    const testData = await testResp.json();
-    const geminiLive = testData.success && testData.ai_powered !== false;
-
-    if (geminiLive) {
-      geminiStatusBadge.className = 'gemini-status-badge gemini-connected';
-      geminiLabel.textContent = 'Gemini AI Connected';
-      geminiInterpretBtn.disabled = false;
-      geminiIdentifyBtn.disabled = false;
-      geminiDecomposeBtn.disabled = false;
-    } else {
-      geminiStatusBadge.className = 'gemini-status-badge gemini-disconnected';
-      geminiLabel.textContent = 'Gemini unavailable (keyword fallback)';
-      // Still enable buttons — they'll use fallback
-      geminiInterpretBtn.disabled = false;
-      geminiIdentifyBtn.disabled = false;
-      geminiDecomposeBtn.disabled = false;
-    }
-  } catch {
-    geminiStatusBadge.className = 'gemini-status-badge gemini-disconnected';
-    geminiLabel.textContent = 'Voice Designer offline';
-  }
-}
-
-function renderGeminiResult(type: string, data: Record<string, unknown>) {
-  geminiTestResult.hidden = false;
-
-  if (!data.success) {
-    geminiTestResult.innerHTML = `<div class="gemini-result-error">${data.error || 'Request failed'}</div>`;
-    return;
-  }
-
-  let html = `<div class="gemini-result-header"><span class="gemini-sparkle">✦</span> ${type}</div>`;
-
-  if (type === 'Interpret') {
-    const d = data as Record<string, unknown>;
-    html += renderSection('Interpretation', d.interpretation as string);
-    if (d.confidence) html += renderSection('Confidence', `${((d.confidence as number) * 100).toFixed(0)}%`);
-    if (d.parler_prompt) html += renderSection('Parler-TTS Prompt', d.parler_prompt as string);
-    if (d.voice_anatomy) html += renderAnatomyGrid(d.voice_anatomy as Record<string, string>);
-    if (d.identified_references && (d.identified_references as unknown[]).length > 0) {
-      const refs = d.identified_references as { name: string; relevance: string }[];
-      html += renderSection('References', refs.map(r => `<strong>${r.name}</strong> — ${r.relevance}`).join('<br>'));
-    }
-    if (d.search_queries && (d.search_queries as string[]).length > 0) {
-      html += renderTags('Search Queries', d.search_queries as string[]);
-    }
-  } else if (type === 'Identify') {
-    const d = data as Record<string, unknown>;
-    const cls = d.classification as Record<string, unknown> | undefined;
-    if (cls?.resolved_name) html += renderSection('Resolved', cls.resolved_name as string);
-    if (cls?.resolved_character) html += renderSection('Character', cls.resolved_character as string);
-    if (d.voice_description) html += renderSection('Voice', d.voice_description as string);
-    else if (d.summary) html += renderSection('Summary', (d.summary as string).slice(0, 300));
-    if (d.known_for && (d.known_for as string[]).length > 0) {
-      html += renderTags('Known For', d.known_for as string[]);
-    }
-    if (d.related_voices && (d.related_voices as string[]).length > 0) {
-      html += renderTags('Similar Voices', d.related_voices as string[]);
-    }
-    if (d.suggested_clip_queries && (d.suggested_clip_queries as string[]).length > 0) {
-      html += renderTags('Clip Queries', (d.suggested_clip_queries as string[]).slice(0, 4));
-    }
-    if (d.ai_powered) html += `<div style="margin-top:6px;font-size:0.7rem;color:var(--success);">AI-powered response</div>`;
-  } else if (type === 'Decompose') {
-    const d = data as Record<string, unknown>;
-    if (d.decomposition) html += renderAnatomyGrid(d.decomposition as Record<string, string[]>);
-  }
-
-  geminiTestResult.innerHTML = html;
-}
-
-function renderSection(label: string, value: string): string {
-  return `<div class="gemini-result-section"><div class="section-label">${label}</div><div class="section-value">${value}</div></div>`;
-}
-
-function renderAnatomyGrid(anatomy: Record<string, string | string[]>): string {
-  const chips = Object.entries(anatomy)
-    .filter(([k]) => !k.startsWith('_'))
-    .map(([k, v]) => {
-      const val = Array.isArray(v) ? v.join(', ') : v;
-      return `<div class="gemini-anatomy-chip"><span class="chip-key">${k}</span><span class="chip-val">${val}</span></div>`;
-    }).join('');
-  return `<div class="gemini-result-section"><div class="section-label">Voice Anatomy</div><div class="gemini-anatomy-grid">${chips}</div></div>`;
-}
-
-function renderTags(label: string, tags: string[]): string {
-  const tagHtml = tags.map(t => `<span class="gemini-result-tag">${t}</span>`).join('');
-  return `<div class="gemini-result-section"><div class="section-label">${label}</div><div class="gemini-result-tags">${tagHtml}</div></div>`;
-}
-
-async function geminiRequest(endpoint: string, body: Record<string, unknown>, btn: HTMLButtonElement, resultType: string) {
-  const input = geminiTestInput.value.trim();
-  if (!input) return;
-
-  btn.classList.add('loading');
-  btn.disabled = true;
-  geminiTestResult.hidden = true;
-
-  try {
-    const resp = await fetch(`${DESIGNER_URL}${endpoint}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    const data = await resp.json();
-    renderGeminiResult(resultType, data);
-  } catch (err) {
-    geminiTestResult.hidden = false;
-    geminiTestResult.innerHTML = `<div class="gemini-result-error">Request failed: ${err}</div>`;
-  } finally {
-    btn.classList.remove('loading');
-    btn.disabled = false;
-  }
-}
-
-geminiInterpretBtn.addEventListener('click', () => {
-  geminiRequest('/interpret', { input: geminiTestInput.value.trim() }, geminiInterpretBtn, 'Interpret');
-});
-geminiIdentifyBtn.addEventListener('click', () => {
-  geminiRequest('/identify', { query: geminiTestInput.value.trim() }, geminiIdentifyBtn, 'Identify');
-});
-geminiDecomposeBtn.addEventListener('click', () => {
-  geminiRequest('/decompose', { description: geminiTestInput.value.trim() }, geminiDecomposeBtn, 'Decompose');
-});
 
 // ── Stack Status Bar ──────────────────────────────────────
 
@@ -2370,11 +1946,11 @@ interface StackStatus {
   ws: boolean;
   alignment: boolean;
   quality: boolean;
-  designer: boolean;
+  docAnalyzer: boolean;
 }
 
 async function checkStackStatus(): Promise<StackStatus> {
-  const results: StackStatus = { ws: false, alignment: false, quality: false, designer: false };
+  const results: StackStatus = { ws: false, alignment: false, quality: false, docAnalyzer: false };
 
   // Use the server stats from the WS server (avoids CORS issues)
   try {
@@ -2384,7 +1960,7 @@ async function checkStackStatus(): Promise<StackStatus> {
     for (const srv of stats) {
       if (srv.engine === 'alignment' && srv.online) results.alignment = true;
       if (srv.engine === 'quality' && srv.online) results.quality = true;
-      if (srv.engine === 'voice-designer' && srv.online) results.designer = true;
+      if (srv.engine === 'document-analyzer' && srv.online) results.docAnalyzer = true;
     }
   } catch { /* WS server down */ }
 
@@ -2398,15 +1974,15 @@ function renderStackStatus(s: StackStatus) {
   setDot(stackDotWs, s.ws);
   setDot(stackDotAlignment, s.alignment);
   setDot(stackDotQuality, s.quality);
-  setDot(stackDotDesigner, s.designer);
+  setDot(stackDotDocAnalyzer, s.docAnalyzer);
 
-  const count = [s.ws, s.alignment, s.quality, s.designer].filter(Boolean).length;
+  const count = [s.ws, s.alignment, s.quality, s.docAnalyzer].filter(Boolean).length;
   stackSummary.textContent = `${count}/4 services up`;
   stackSummary.style.color = count === 4 ? 'var(--success)' : count > 0 ? 'var(--warn)' : 'var(--error)';
 }
 
 async function refreshStackStatus() {
-  [stackDotWs, stackDotAlignment, stackDotQuality, stackDotDesigner].forEach(d => d.className = 'stack-dot checking');
+  [stackDotWs, stackDotAlignment, stackDotQuality, stackDotDocAnalyzer].forEach(d => d.className = 'stack-dot checking');
   stackSummary.textContent = 'Checking...';
   const s = await checkStackStatus();
   renderStackStatus(s);
@@ -2424,13 +2000,1147 @@ function startStackPoll() {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     if (!serverDashboard.hidden) closeServerDashboard();
-    if (!designerModal.hidden) closeDesignerModal();
+    if (!craftingModal.hidden) closeCraftingModal();
     if (!sampleModal.hidden) closeSampleModal();
     if (!piperModal.hidden) closePiperModal();
     if (!contextMenu.hidden) hideContextMenu();
     if (!errorDialog.hidden) hideErrorDialog();
   }
 });
+
+// ── Voice Crafting Studio ──────────────────────────────────
+
+const craftingModal = document.getElementById('crafting-modal') as HTMLDivElement;
+const craftingProgress = document.getElementById('crafting-progress') as HTMLDivElement;
+const craftingLoading = document.getElementById('crafting-loading') as HTMLDivElement;
+const craftingLoadingLabel = document.getElementById('crafting-loading-label') as HTMLSpanElement;
+const craftingLoadingPercent = document.getElementById('crafting-loading-percent') as HTMLSpanElement;
+const craftingLoadingFill = document.getElementById('crafting-loading-fill') as HTMLDivElement;
+const craftingLoadingSteps = document.getElementById('crafting-loading-steps') as HTMLDivElement;
+const craftingModeSelect = document.getElementById('crafting-mode-select') as HTMLDivElement;
+const craftingArchetypeGrid = document.getElementById('crafting-archetype-grid') as HTMLDivElement;
+const craftingArchetypes = document.getElementById('crafting-archetypes') as HTMLDivElement;
+const craftingFreeform = document.getElementById('crafting-freeform') as HTMLDivElement;
+const craftingFreeformInput = document.getElementById('crafting-freeform-input') as HTMLTextAreaElement;
+const craftingFreeformStart = document.getElementById('crafting-freeform-start') as HTMLButtonElement;
+const craftingAxisStep = document.getElementById('crafting-axis-step') as HTMLDivElement;
+const craftingAxisCounter = document.getElementById('crafting-axis-counter') as HTMLSpanElement;
+const craftingAxisLabel = document.getElementById('crafting-axis-label') as HTMLHeadingElement;
+const craftingAxisDesc = document.getElementById('crafting-axis-desc') as HTMLParagraphElement;
+const craftingSamplesRow = document.getElementById('crafting-samples-row') as HTMLDivElement;
+const craftingBackBtn = document.getElementById('crafting-back-btn') as HTMLButtonElement;
+const craftingSkipBtn = document.getElementById('crafting-skip-btn') as HTMLButtonElement;
+const craftingRegenBtn = document.getElementById('crafting-regen-btn') as HTMLButtonElement;
+const craftingCumulative = document.getElementById('crafting-cumulative') as HTMLDivElement;
+const craftingCumulativeText = document.getElementById('crafting-cumulative-text') as HTMLSpanElement;
+const craftingSummary = document.getElementById('crafting-summary') as HTMLDivElement;
+const craftingTraitsList = document.getElementById('crafting-traits-list') as HTMLDivElement;
+const craftingFinalDesc = document.getElementById('crafting-final-desc') as HTMLParagraphElement;
+const craftingSaveName = document.getElementById('crafting-save-name') as HTMLInputElement;
+const craftingSaveBtn = document.getElementById('crafting-save-btn') as HTMLButtonElement;
+const craftingStatus = document.getElementById('crafting-status') as HTMLSpanElement;
+const craftingApiCounter = document.getElementById('crafting-api-counter') as HTMLSpanElement;
+const craftingModalClose = document.getElementById('crafting-modal-close') as HTMLButtonElement;
+const voiceCraftingBtn = document.getElementById('voice-crafting-btn') as HTMLButtonElement;
+
+interface CraftingSessionState {
+  session_id: string;
+  mode: string;
+  current_axis_index: number;
+  axes_order: string[];
+  selections: Record<string, unknown>;
+  cumulative_prompt: string;
+  api_call_count: number;
+  status: string;
+  user_intent?: string;
+  parsed_freeform?: Record<string, string>;
+  operation?: CraftingOperationState;
+  current_axis: { id: string; label: string; description: string; category: string } | null;
+  total_axes: number;
+  progress: Array<{ axis_id: string; label: string; category: string; state: string }>;
+}
+
+interface CraftingOperationState {
+  kind: string;
+  active: boolean;
+  message: string;
+  current_step: number;
+  total_steps: number;
+  percent: number;
+  stage: string;
+  steps: Array<{ label: string; state: string }>;
+  error?: string | null;
+}
+
+interface CraftingSample {
+  index: number;
+  label: string;
+  archetype_id: string;
+  archetype_label: string;
+  audio_base64: string | null;
+  sample_rate: number;
+  generated_voice_id: string | null;
+}
+
+let craftingSession: CraftingSessionState | null = null;
+let craftingCurrentAudio: HTMLAudioElement | null = null;
+let craftingBusy = false;
+let craftingLoadingTimer = 0;
+
+async function craftingRequest(endpoint: string, body: Record<string, unknown> = {}): Promise<unknown> {
+  const resp = await fetch(`${DESIGNER_URL}${endpoint}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await resp.json();
+  if (!resp.ok) {
+    throw new Error((data && data.error) || `Request failed: ${resp.status}`);
+  }
+  return data;
+}
+
+async function craftingGetSession(sessionId: string): Promise<CraftingSessionState | null> {
+  try {
+    const resp = await fetch(`${DESIGNER_URL}/crafting/session/${sessionId}`);
+    const data = await resp.json();
+    if (!resp.ok || !data.success) return null;
+    return data.session as CraftingSessionState;
+  } catch {
+    return null;
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function craftingSetBusy(busy: boolean) {
+  craftingBusy = busy;
+  craftingModeSelect.querySelectorAll('.crafting-mode-card').forEach((card) => {
+    card.classList.toggle('busy', busy);
+  });
+  craftingFreeformStart.disabled = busy;
+  craftingBackBtn.disabled = busy || (!craftingSession || craftingSession.current_axis_index === 0);
+  craftingSkipBtn.disabled = busy;
+  craftingRegenBtn.disabled = busy;
+  craftingSaveBtn.disabled = busy;
+}
+
+function craftingRenderLoading(
+  label: string,
+  percent: number,
+  steps: Array<{ label: string; state: string }>,
+  visible = true,
+) {
+  window.clearTimeout(craftingLoadingTimer);
+  craftingLoading.hidden = !visible;
+  if (!visible) return;
+  const safePercent = Math.max(0, Math.min(100, Math.round(percent)));
+  craftingLoadingLabel.textContent = label;
+  craftingLoadingPercent.textContent = `${safePercent}%`;
+  craftingLoadingFill.style.width = `${safePercent}%`;
+  craftingLoadingSteps.innerHTML = steps.map((step) =>
+    `<div class="phase-loading-step" data-state="${step.state}">${step.label}</div>`
+  ).join('');
+}
+
+function craftingHideLoading() {
+  window.clearTimeout(craftingLoadingTimer);
+  craftingLoading.hidden = true;
+  craftingLoadingFill.style.width = '0%';
+  craftingLoadingPercent.textContent = '0%';
+  craftingLoadingSteps.innerHTML = '';
+}
+
+function craftingScheduleHideLoading(delay = 600) {
+  window.clearTimeout(craftingLoadingTimer);
+  craftingLoadingTimer = window.setTimeout(() => craftingHideLoading(), delay);
+}
+
+function craftingRenderLoadingError(message: string) {
+  craftingRenderLoading(message, 100, [
+    { label: message, state: 'error' },
+  ]);
+  craftingScheduleHideLoading(1200);
+}
+
+async function craftingTrackSessionOperation<T>(
+  sessionId: string,
+  request: Promise<T>,
+  fallback: { label: string; percent: number; steps: Array<{ label: string; state: string }> },
+): Promise<T> {
+  let active = true;
+  const poller = (async () => {
+    craftingRenderLoading(fallback.label, fallback.percent, fallback.steps);
+    while (active) {
+      const snapshot = await craftingGetSession(sessionId);
+      if (snapshot?.operation) {
+        const op = snapshot.operation;
+        craftingRenderLoading(
+          op.message || fallback.label,
+          op.percent || fallback.percent,
+          op.steps || fallback.steps,
+          true,
+        );
+      }
+      await sleep(250);
+    }
+  })();
+
+  try {
+    return await request;
+  } finally {
+    active = false;
+    await poller;
+  }
+}
+
+function craftingShowStep(step: 'mode' | 'archetype' | 'freeform' | 'axis' | 'summary') {
+  craftingModeSelect.hidden = step !== 'mode';
+  craftingArchetypeGrid.hidden = step !== 'archetype';
+  craftingFreeform.hidden = step !== 'freeform';
+  craftingAxisStep.hidden = step !== 'axis';
+  craftingSummary.hidden = step !== 'summary';
+}
+
+function craftingUpdateProgress() {
+  if (!craftingSession) {
+    craftingProgress.innerHTML = '';
+    return;
+  }
+  craftingProgress.innerHTML = craftingSession.progress.map(p =>
+    `<div class="crafting-progress-dot" data-state="${p.state}" data-category="${p.category}" title="${p.label}"></div>`
+  ).join('');
+  craftingApiCounter.textContent = `API calls: ${craftingSession.api_call_count}`;
+}
+
+function craftingUpdateCumulative() {
+  if (!craftingSession || !craftingSession.cumulative_prompt) {
+    craftingCumulative.hidden = true;
+    return;
+  }
+  craftingCumulative.hidden = false;
+  craftingCumulativeText.textContent = craftingSession.cumulative_prompt;
+}
+
+function craftingStopAudio() {
+  if (craftingCurrentAudio) {
+    craftingCurrentAudio.pause();
+    craftingCurrentAudio = null;
+  }
+  craftingSamplesRow.querySelectorAll('.crafting-sample-card').forEach(c => c.classList.remove('playing'));
+}
+
+function craftingPlaySample(audioB64: string | null, sampleRate: number, cardEl: HTMLElement) {
+  craftingStopAudio();
+  if (!audioB64) return;
+
+  const pcmBytes = Uint8Array.from(atob(audioB64), c => c.charCodeAt(0));
+  const pcmFloat32 = new Float32Array(pcmBytes.buffer);
+  const wavBlob = pcmToWavBlob(pcmFloat32, sampleRate);
+  const audio = new Audio(URL.createObjectURL(wavBlob));
+  craftingCurrentAudio = audio;
+  cardEl.classList.add('playing');
+  audio.onended = () => {
+    cardEl.classList.remove('playing');
+    craftingCurrentAudio = null;
+  };
+  audio.play();
+}
+
+function craftingRenderSamples(samples: CraftingSample[]) {
+  craftingSamplesRow.innerHTML = samples.map((s, i) => `
+    <div class="crafting-sample-card" data-index="${i}" data-archetype="${s.archetype_id}">
+      <div class="sample-card-label">${s.label}</div>
+      <div class="sample-card-archetype">${s.archetype_label}</div>
+      ${s.audio_base64 ? `<div class="sample-card-actions">
+        <button type="button" class="sample-play-btn" data-index="${i}" ${craftingBusy ? 'disabled' : ''}>Play</button>
+        <button type="button" class="sample-select-btn" data-index="${i}" data-archetype="${s.archetype_id}" ${craftingBusy ? 'disabled' : ''}>Select</button>
+      </div>` : '<div class="sample-no-audio">No audio generated</div>'}
+    </div>
+  `).join('');
+
+  // Wire play buttons
+  craftingSamplesRow.querySelectorAll('.sample-play-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt((btn as HTMLElement).dataset.index || '0');
+      const sample = samples[idx];
+      const card = (btn as HTMLElement).closest('.crafting-sample-card') as HTMLElement;
+      craftingPlaySample(sample.audio_base64, sample.sample_rate, card);
+    });
+  });
+
+  // Wire select buttons
+  craftingSamplesRow.querySelectorAll('.sample-select-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (craftingBusy) return;
+      const archId = (btn as HTMLElement).dataset.archetype || '';
+      const idx = parseInt((btn as HTMLElement).dataset.index || '0');
+      if (!craftingSession) return;
+      const axisId = craftingSession.current_axis?.id;
+      if (!axisId) return;
+
+      craftingStopAudio();
+      craftingStatus.textContent = 'Selecting...';
+      craftingSetBusy(true);
+      craftingRenderLoading('Saving your choice...', 50, [
+        { label: 'Apply selected voice direction', state: 'active' },
+        { label: 'Advance to the next comparison', state: 'pending' },
+      ]);
+      try {
+        const result = await craftingRequest('/crafting/select', {
+          session_id: craftingSession.session_id,
+          axis_id: axisId,
+          archetype_id: archId,
+          preview_index: idx,
+        }) as { success: boolean; session: CraftingSessionState; is_complete: boolean };
+
+        if (result.success) {
+          craftingSession = result.session;
+          craftingUpdateProgress();
+          craftingUpdateCumulative();
+          craftingRenderLoading('Selection saved', 100, [
+            { label: 'Apply selected voice direction', state: 'done' },
+            { label: 'Advance to the next comparison', state: 'done' },
+          ]);
+          craftingScheduleHideLoading(350);
+          craftingSetBusy(false);
+          if (result.is_complete) {
+            await craftingShowSummary();
+          } else {
+            await craftingExploreCurrentAxis();
+          }
+          return;
+        }
+      } catch (err) {
+        craftingStatus.textContent = `Error: ${err}`;
+        craftingRenderLoadingError('Could not save this selection');
+      }
+      craftingSetBusy(false);
+    });
+  });
+}
+
+async function craftingExploreCurrentAxis() {
+  if (!craftingSession || craftingBusy) return;
+  craftingShowStep('axis');
+
+  const ax = craftingSession.current_axis;
+  if (!ax) {
+    await craftingShowSummary();
+    return;
+  }
+
+  craftingAxisCounter.textContent = `Step ${craftingSession.current_axis_index + 1} of ${craftingSession.total_axes}`;
+  craftingAxisLabel.textContent = ax.label;
+  craftingAxisDesc.textContent = ax.description;
+  craftingBackBtn.disabled = craftingSession.current_axis_index === 0;
+
+  // Show loading state
+  craftingSamplesRow.innerHTML = '<div class="crafting-sample-card loading"></div><div class="crafting-sample-card loading"></div><div class="crafting-sample-card loading"></div>';
+  craftingStatus.textContent = `Generating ${ax.label} samples...`;
+  craftingSetBusy(true);
+
+  try {
+    const result = await craftingTrackSessionOperation(
+      craftingSession.session_id,
+      craftingRequest('/crafting/explore', {
+        session_id: craftingSession.session_id,
+        axis_id: ax.id,
+      }) as Promise<{ success: boolean; samples: CraftingSample[]; session: CraftingSessionState }>,
+      {
+        label: `Generating ${ax.label} samples...`,
+        percent: 5,
+        steps: [
+          { label: 'Prepare prompts', state: 'active' },
+          { label: 'Generate option A', state: 'pending' },
+          { label: 'Generate option B', state: 'pending' },
+          { label: 'Generate option C', state: 'pending' },
+        ],
+      },
+    );
+
+    if (result.success) {
+      craftingSession = result.session;
+      craftingUpdateProgress();
+      craftingUpdateCumulative();
+      craftingRenderLoading(`Finished ${ax.label} comparisons`, 100, (craftingSession.operation?.steps || []).map((step) => ({
+        label: step.label,
+        state: step.state === 'active' ? 'done' : step.state,
+      })));
+      craftingRenderSamples(result.samples);
+      craftingStatus.textContent = `${result.samples.length} samples ready`;
+      craftingScheduleHideLoading(600);
+    } else {
+      craftingStatus.textContent = 'Failed to generate samples';
+      craftingSamplesRow.innerHTML = '<div class="sample-no-audio">Generation failed — try Regenerate</div>';
+      craftingRenderLoadingError(`Could not generate ${ax.label} samples`);
+    }
+  } catch (err) {
+    craftingStatus.textContent = `Error: ${err}`;
+    craftingSamplesRow.innerHTML = '<div class="sample-no-audio">Generation failed — try Regenerate</div>';
+    craftingRenderLoadingError(`Could not generate ${ax.label} samples`);
+  } finally {
+    craftingSetBusy(false);
+  }
+}
+
+async function craftingShowSummary() {
+  if (!craftingSession || craftingBusy) return;
+
+  craftingStatus.textContent = 'Finalizing...';
+  craftingSetBusy(true);
+  try {
+    const result = await craftingTrackSessionOperation(
+      craftingSession.session_id,
+      craftingRequest('/crafting/finish', {
+        session_id: craftingSession.session_id,
+      }) as Promise<{ success: boolean; polished_description: string; selections: Record<string, { archetype_id: string; prompt_fragment: string }> }>,
+      {
+        label: 'Finalizing your crafted voice...',
+        percent: 10,
+        steps: [
+          { label: 'Compile selected traits', state: 'active' },
+          { label: 'Polish final prompt', state: 'pending' },
+        ],
+      },
+    );
+
+    if (result.success) {
+      craftingShowStep('summary');
+      craftingFinalDesc.textContent = result.polished_description || '';
+
+      const traitsHtml: string[] = [];
+      const progress = craftingSession.progress || [];
+      for (const p of progress) {
+        const sel = result.selections[p.axis_id] as { archetype_id: string; prompt_fragment: string } | undefined;
+        if (!sel || sel.archetype_id === '__skipped__') continue;
+        traitsHtml.push(`
+          <div class="crafting-trait-item">
+            <span class="trait-axis-label">${p.label}</span>
+            <span class="trait-value">${sel.prompt_fragment || sel.archetype_id}</span>
+          </div>
+        `);
+      }
+      craftingTraitsList.innerHTML = traitsHtml.join('');
+      craftingRenderLoading('Voice summary ready', 100, [
+        { label: 'Compile selected traits', state: 'done' },
+        { label: 'Polish final prompt', state: 'done' },
+      ]);
+      craftingStatus.textContent = 'Summary ready';
+      craftingScheduleHideLoading(600);
+    } else {
+      craftingStatus.textContent = 'Failed to finalize';
+      craftingRenderLoadingError('Could not build the final summary');
+    }
+  } catch (err) {
+    craftingStatus.textContent = `Error: ${err}`;
+    craftingRenderLoadingError('Could not build the final summary');
+  } finally {
+    craftingSetBusy(false);
+  }
+}
+
+async function openCraftingModal() {
+  craftingModal.hidden = false;
+  craftingSession = null;
+  craftingStopAudio();
+  craftingSetBusy(false);
+  craftingShowStep('mode');
+  craftingProgress.innerHTML = '';
+  craftingApiCounter.textContent = '';
+  craftingStatus.textContent = '';
+  craftingHideLoading();
+}
+
+function closeCraftingModal() {
+  if (craftingBusy) return;
+  craftingModal.hidden = true;
+  craftingStopAudio();
+  craftingHideLoading();
+}
+
+// Mode card clicks
+craftingModeSelect.querySelectorAll('.crafting-mode-card').forEach(card => {
+  card.addEventListener('click', async () => {
+    if (craftingBusy) return;
+    const mode = (card as HTMLElement).dataset.mode;
+    if (mode === 'guided') {
+      craftingStatus.textContent = 'Starting session...';
+      craftingSetBusy(true);
+      craftingRenderLoading('Starting guided voice crafting...', 20, [
+        { label: 'Create session', state: 'active' },
+        { label: 'Open first comparison', state: 'pending' },
+      ]);
+      try {
+        const result = await craftingRequest('/crafting/start', { mode: 'guided' }) as { success: boolean; session: CraftingSessionState };
+        if (result.success) {
+          craftingSession = result.session;
+          craftingUpdateProgress();
+          craftingRenderLoading('Guided session ready', 100, [
+            { label: 'Create session', state: 'done' },
+            { label: 'Open first comparison', state: 'done' },
+          ]);
+          craftingScheduleHideLoading(400);
+          craftingSetBusy(false);
+          await craftingExploreCurrentAxis();
+          return;
+        }
+      } catch (err) {
+        craftingStatus.textContent = `Error: ${err}`;
+        craftingRenderLoadingError('Could not start guided crafting');
+      }
+      craftingSetBusy(false);
+    } else if (mode === 'archetype') {
+      await craftingLoadArchetypes();
+      craftingShowStep('archetype');
+    } else if (mode === 'freeform') {
+      craftingShowStep('freeform');
+    }
+  });
+});
+
+async function craftingLoadArchetypes() {
+  if (craftingBusy) return;
+  craftingSetBusy(true);
+  craftingRenderLoading('Loading archetypes...', 20, [
+    { label: 'Request archetype catalog', state: 'active' },
+    { label: 'Render starting points', state: 'pending' },
+  ]);
+  try {
+    const resp = await fetch(`${DESIGNER_URL}/crafting/archetypes`);
+    const data = await resp.json();
+    const archetypes = data.archetypes || [];
+    craftingArchetypes.innerHTML = archetypes.map((a: { id: string; label: string; description: string }) => `
+      <div class="crafting-archetype-card" data-id="${a.id}">
+        <div class="archetype-card-label">${a.label}</div>
+        <div class="archetype-card-desc">${a.description}</div>
+      </div>
+    `).join('');
+
+    craftingArchetypes.querySelectorAll('.crafting-archetype-card').forEach(card => {
+      card.addEventListener('click', async () => {
+        if (craftingBusy) return;
+        const archId = (card as HTMLElement).dataset.id || '';
+        craftingStatus.textContent = 'Starting from archetype...';
+        craftingSetBusy(true);
+        craftingRenderLoading('Starting from archetype...', 30, [
+          { label: 'Create session from archetype', state: 'active' },
+          { label: 'Open first comparison', state: 'pending' },
+        ]);
+        try {
+          const result = await craftingRequest('/crafting/start', {
+            mode: 'archetype',
+            archetype_id: archId,
+          }) as { success: boolean; session: CraftingSessionState };
+          if (result.success) {
+            craftingSession = result.session;
+            craftingUpdateProgress();
+            craftingRenderLoading('Archetype session ready', 100, [
+              { label: 'Create session from archetype', state: 'done' },
+              { label: 'Open first comparison', state: 'done' },
+            ]);
+            craftingScheduleHideLoading(400);
+            craftingSetBusy(false);
+            await craftingExploreCurrentAxis();
+            return;
+          }
+        } catch (err) {
+          craftingStatus.textContent = `Error: ${err}`;
+          craftingRenderLoadingError('Could not start from that archetype');
+        }
+        craftingSetBusy(false);
+      });
+    });
+    craftingRenderLoading('Archetypes ready', 100, [
+      { label: 'Request archetype catalog', state: 'done' },
+      { label: 'Render starting points', state: 'done' },
+    ]);
+    craftingScheduleHideLoading(400);
+  } catch {
+    craftingArchetypes.innerHTML = '<div class="sample-no-audio">Failed to load archetypes</div>';
+    craftingStatus.textContent = 'Failed to load archetypes';
+    craftingRenderLoadingError('Could not load archetypes');
+  } finally {
+    craftingSetBusy(false);
+  }
+}
+
+// Freeform start
+craftingFreeformStart.addEventListener('click', async () => {
+  if (craftingBusy) return;
+  const text = craftingFreeformInput.value.trim();
+  if (!text) return;
+  craftingStatus.textContent = 'Interpreting description...';
+  craftingSetBusy(true);
+  craftingRenderLoading('Interpreting your description...', 20, [
+    { label: 'Send freeform description', state: 'active' },
+    { label: 'Map voice traits to axes', state: 'pending' },
+    { label: 'Open first unresolved comparison', state: 'pending' },
+  ]);
+  try {
+    const result = await craftingRequest('/crafting/start', {
+      mode: 'freeform',
+      freeform_text: text,
+    }) as { success: boolean; session: CraftingSessionState };
+    if (result.success) {
+      craftingSession = result.session;
+      craftingUpdateProgress();
+      craftingUpdateCumulative();
+      craftingRenderLoading('Description mapped to crafting axes', 100, [
+        { label: 'Send freeform description', state: 'done' },
+        { label: 'Map voice traits to axes', state: 'done' },
+        { label: 'Open first unresolved comparison', state: 'done' },
+      ]);
+      craftingScheduleHideLoading(400);
+      craftingSetBusy(false);
+      await craftingExploreCurrentAxis();
+      return;
+    }
+  } catch (err) {
+    craftingStatus.textContent = `Error: ${err}`;
+    craftingRenderLoadingError('Could not interpret that description');
+  }
+  craftingSetBusy(false);
+});
+
+// Axis action buttons
+craftingBackBtn.addEventListener('click', async () => {
+  if (!craftingSession || craftingBusy) return;
+  craftingStopAudio();
+  craftingStatus.textContent = 'Going back...';
+  craftingSetBusy(true);
+  craftingRenderLoading('Returning to the previous voice axis...', 50, [
+    { label: 'Restore previous axis state', state: 'active' },
+    { label: 'Open updated comparison', state: 'pending' },
+  ]);
+  try {
+    const result = await craftingRequest('/crafting/back', {
+      session_id: craftingSession.session_id,
+    }) as { success: boolean; session: CraftingSessionState };
+    if (result.success) {
+      craftingSession = result.session;
+      craftingUpdateProgress();
+      craftingUpdateCumulative();
+      craftingRenderLoading('Previous axis restored', 100, [
+        { label: 'Restore previous axis state', state: 'done' },
+        { label: 'Open updated comparison', state: 'done' },
+      ]);
+      craftingScheduleHideLoading(350);
+      craftingSetBusy(false);
+      await craftingExploreCurrentAxis();
+      return;
+    }
+  } catch (err) {
+    craftingStatus.textContent = `Error: ${err}`;
+    craftingRenderLoadingError('Could not return to the previous axis');
+  }
+  craftingSetBusy(false);
+});
+
+craftingSkipBtn.addEventListener('click', async () => {
+  if (!craftingSession || craftingBusy) return;
+  craftingStopAudio();
+  craftingStatus.textContent = 'Skipping...';
+  craftingSetBusy(true);
+  craftingRenderLoading('Skipping this axis...', 50, [
+    { label: 'Mark axis as skipped', state: 'active' },
+    { label: 'Advance to the next step', state: 'pending' },
+  ]);
+  try {
+    const result = await craftingRequest('/crafting/skip', {
+      session_id: craftingSession.session_id,
+    }) as { success: boolean; session: CraftingSessionState; is_complete: boolean };
+    if (result.success) {
+      craftingSession = result.session;
+      craftingUpdateProgress();
+      craftingUpdateCumulative();
+      craftingRenderLoading('Axis skipped', 100, [
+        { label: 'Mark axis as skipped', state: 'done' },
+        { label: 'Advance to the next step', state: 'done' },
+      ]);
+      craftingScheduleHideLoading(350);
+      craftingSetBusy(false);
+      if (result.is_complete) {
+        await craftingShowSummary();
+      } else {
+        await craftingExploreCurrentAxis();
+      }
+      return;
+    }
+  } catch (err) {
+    craftingStatus.textContent = `Error: ${err}`;
+    craftingRenderLoadingError('Could not skip this axis');
+  }
+  craftingSetBusy(false);
+});
+
+craftingRegenBtn.addEventListener('click', async () => {
+  if (!craftingSession || craftingBusy) return;
+  craftingStopAudio();
+  craftingStatus.textContent = 'Regenerating this comparison...';
+  craftingSetBusy(true);
+  try {
+    const ax = craftingSession.current_axis;
+    if (!ax) return;
+    craftingSamplesRow.innerHTML = '<div class="crafting-sample-card loading"></div><div class="crafting-sample-card loading"></div><div class="crafting-sample-card loading"></div>';
+    const result = await craftingTrackSessionOperation(
+      craftingSession.session_id,
+      craftingRequest('/crafting/regenerate', {
+        session_id: craftingSession.session_id,
+      }) as Promise<{ success: boolean; samples: CraftingSample[]; session: CraftingSessionState }>,
+      {
+        label: `Regenerating ${ax.label} samples...`,
+        percent: 5,
+        steps: [
+          { label: 'Clear previous samples', state: 'done' },
+          { label: 'Generate refreshed options', state: 'active' },
+        ],
+      },
+    );
+    if (result.success) {
+      craftingSession = result.session;
+      craftingUpdateProgress();
+      craftingUpdateCumulative();
+      craftingRenderSamples(result.samples);
+      craftingRenderLoading(`Finished regenerating ${ax.label}`, 100, [
+        { label: 'Clear previous samples', state: 'done' },
+        { label: 'Generate refreshed options', state: 'done' },
+      ]);
+      craftingStatus.textContent = `${result.samples.length} refreshed samples ready`;
+      craftingScheduleHideLoading(600);
+    }
+  } catch (err) {
+    craftingStatus.textContent = `Error: ${err}`;
+    craftingRenderLoadingError('Could not regenerate the samples');
+  } finally {
+    craftingSetBusy(false);
+  }
+});
+
+// Save button
+craftingSaveBtn.addEventListener('click', async () => {
+  if (!craftingSession || craftingBusy) return;
+  const name = craftingSaveName.value.trim();
+  if (!name) {
+    craftingStatus.textContent = 'Please enter a name';
+    return;
+  }
+  craftingStatus.textContent = 'Saving...';
+  craftingSetBusy(true);
+  try {
+    const result = await craftingTrackSessionOperation(
+      craftingSession.session_id,
+      craftingRequest('/crafting/finish', {
+        session_id: craftingSession.session_id,
+        profile_name: name,
+      }) as Promise<{ success: boolean; profile_id?: string }>,
+      {
+        label: `Saving ${name}...`,
+        percent: 10,
+        steps: [
+          { label: 'Compile selected traits', state: 'active' },
+          { label: 'Polish final prompt', state: 'pending' },
+          { label: 'Save final voice', state: 'pending' },
+        ],
+      },
+    );
+    if (result.success) {
+      craftingRenderLoading(`Saved ${name}`, 100, [
+        { label: 'Compile selected traits', state: 'done' },
+        { label: 'Polish final prompt', state: 'done' },
+        { label: 'Save final voice', state: 'done' },
+      ]);
+      craftingStatus.textContent = `Saved as profile ${result.profile_id || name}`;
+      craftingScheduleHideLoading(800);
+    } else {
+      craftingStatus.textContent = 'Save failed';
+      craftingRenderLoadingError(`Could not save ${name}`);
+    }
+  } catch (err) {
+    craftingStatus.textContent = `Error: ${err}`;
+    craftingRenderLoadingError(`Could not save ${name}`);
+  } finally {
+    craftingSetBusy(false);
+  }
+});
+
+// Open/close
+voiceCraftingBtn.addEventListener('click', openCraftingModal);
+craftingModalClose.addEventListener('click', closeCraftingModal);
+craftingModal.addEventListener('click', (e) => {
+  if (e.target === craftingModal) closeCraftingModal();
+});
+
+// ── Phase 3: Document Mode ────────────────────────────────
+
+const docModeCheck = document.getElementById('doc-mode-check') as HTMLInputElement;
+const docControls = document.getElementById('doc-controls') as HTMLDivElement;
+const docFormatSelect = document.getElementById('doc-format-select') as HTMLSelectElement;
+const docAnalyzeBtn = document.getElementById('doc-analyze-btn') as HTMLButtonElement;
+const docSampleBtn = document.getElementById('doc-sample-btn') as HTMLButtonElement;
+const docResultsSection = document.getElementById('doc-results-section') as HTMLElement;
+const docStatsBar = document.getElementById('doc-stats-bar') as HTMLDivElement;
+const docTabElements = document.getElementById('doc-tab-elements') as HTMLDivElement;
+const docTabHighlight = document.getElementById('doc-tab-highlight') as HTMLDivElement;
+const docTabScheme = document.getElementById('doc-tab-scheme') as HTMLDivElement;
+const docSamplesDropdown = document.getElementById('doc-samples-dropdown') as HTMLDivElement;
+
+let lastDocAnalysis: DocumentAnalysisResult | null = null;
+
+// Toggle document mode
+docModeCheck.addEventListener('change', () => {
+  docControls.hidden = !docModeCheck.checked;
+  if (!docModeCheck.checked) {
+    docResultsSection.hidden = true;
+    lastDocAnalysis = null;
+  }
+});
+
+// Sample texts
+const DOC_SAMPLES: Record<string, { text: string; format: string }> = {
+  novel: {
+    format: 'plain',
+    text: `Chapter 1: The Arrival
+
+The train pulled into the station with a long, mournful whistle. Sarah pressed her face against the cold glass, watching the unfamiliar town materialize through the fog.
+
+"Is this it?" she whispered.
+
+"Millfield," the conductor announced, his voice echoing through the nearly empty car. "Last stop."
+
+She gathered her single suitcase and stepped onto the platform. The air smelled of rain and pine needles. A figure waited beneath the station's only lamppost—tall, wrapped in a dark coat, face hidden in shadow.
+
+"You must be Sarah," the figure said. The voice was warm, unexpectedly kind. "I'm James. Your grandfather sent me."
+
+Sarah hesitated. She hadn't seen her grandfather in fifteen years. Not since the funeral.
+
+"He's waiting," James added softly. "He has a great deal to tell you."`,
+  },
+  markdown: {
+    format: 'markdown',
+    text: `# Getting Started with WebVox
+
+WebVox is a **powerful** text-to-speech platform that supports multiple engines.
+
+## Installation
+
+First, clone the repository:
+
+\`\`\`bash
+git clone https://github.com/example/webvox.git
+cd webvox
+npm install
+\`\`\`
+
+## Features
+
+- Multiple TTS engine support
+- Real-time word highlighting
+- Voice cloning capabilities
+- *Quality analysis* with AI models
+
+## Configuration
+
+The main config file is \`device_config.json\`. Edit this to set up your GPU/CPU preferences.
+
+> **Note:** For best results, use a CUDA-compatible GPU with at least 8GB VRAM.
+
+See the [documentation](https://docs.webvox.dev) for more details.`,
+  },
+  html: {
+    format: 'html',
+    text: `<h1>Breaking News: AI Revolution</h1>
+<p>Scientists at the <strong>Global Research Institute</strong> announced today a breakthrough in artificial intelligence that could transform how we interact with technology.</p>
+<h2>Key Findings</h2>
+<p>The research team, led by <em>Dr. Elena Martinez</em>, demonstrated a system capable of understanding natural language with unprecedented accuracy.</p>
+<blockquote>This represents a paradigm shift in human-computer interaction. We are witnessing the dawn of truly intelligent machines.</blockquote>
+<p>The technology uses a novel approach combining:</p>
+<ul>
+<li>Neural network architectures</li>
+<li>Reinforcement learning</li>
+<li>Knowledge graph integration</li>
+</ul>
+<p>For more information, visit the <a href="https://example.com">official website</a>.</p>`,
+  },
+  dialogue: {
+    format: 'plain',
+    text: `The courtroom fell silent as the judge entered.
+
+"All rise," the bailiff called.
+
+Judge Morrison took her seat and surveyed the room. "Be seated. Counselor, you may proceed."
+
+"Thank you, Your Honor." Attorney Chen straightened his tie and approached the witness stand. "Mr. Davis, can you tell the court what you saw on the night of March 15th?"
+
+Davis shifted uncomfortably. "I was walking home from the store. Around nine, nine-thirty maybe."
+
+"And what did you observe?"
+
+"I heard shouting first," Davis said, his voice barely above a whisper. "Then I saw two people near the alley."
+
+"Objection!" the defense attorney stood abruptly. "Leading the witness."
+
+"Overruled," Judge Morrison said firmly. "Continue, Mr. Chen."`,
+  },
+  technical: {
+    format: 'markdown',
+    text: `# WebSocket Protocol Reference
+
+## Message Types
+
+The protocol defines two categories of messages:
+
+### Client Messages
+
+\`\`\`typescript
+interface ClientMessage {
+  type: 'synthesize' | 'cancel' | 'list_voices';
+  id?: string;
+  text?: string;
+  voice_id?: string;
+}
+\`\`\`
+
+### Host Messages
+
+Host messages include \`audio_chunk\`, \`word_boundary\`, and \`synthesis_complete\`.
+
+## Connection Flow
+
+1. Client connects via WebSocket to \`ws://localhost:21740\`
+2. Server sends initial \`system_info\` message
+3. Client sends \`list_voices\` to get available engines
+4. Client sends \`synthesize\` with text and voice selection
+
+> **Important:** Always handle the \`error\` message type for graceful degradation.
+
+The default sample rate is \`22050 Hz\` for most engines.`,
+  },
+};
+
+// Samples dropdown
+docSampleBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (!docSamplesDropdown.hidden) {
+    docSamplesDropdown.hidden = true;
+    return;
+  }
+  const rect = docSampleBtn.getBoundingClientRect();
+  docSamplesDropdown.style.top = `${rect.bottom + 4}px`;
+  docSamplesDropdown.style.left = `${rect.left}px`;
+  docSamplesDropdown.hidden = false;
+});
+
+document.addEventListener('click', () => {
+  docSamplesDropdown.hidden = true;
+});
+
+docSamplesDropdown.addEventListener('click', (e) => {
+  const item = (e.target as HTMLElement).closest('.doc-sample-item') as HTMLElement;
+  if (!item) return;
+  const key = item.dataset.sample;
+  if (!key || !DOC_SAMPLES[key]) return;
+  const sample = DOC_SAMPLES[key];
+  textInput.value = sample.text;
+  docFormatSelect.value = sample.format;
+  docSamplesDropdown.hidden = true;
+  generateBtn.disabled = !selectedVoiceId;
+  log(`Loaded sample: ${key}`, 'info');
+});
+
+// Analyze button
+docAnalyzeBtn.addEventListener('click', async () => {
+  const text = textInput.value.trim();
+  if (!text) {
+    log('No text to analyze', 'warn');
+    return;
+  }
+
+  docAnalyzeBtn.disabled = true;
+  docAnalyzeBtn.classList.add('analyzing');
+  docAnalyzeBtn.textContent = 'Analyzing...';
+  log('Analyzing document structure...');
+
+  try {
+    const format = docFormatSelect.value;
+    const result = await nativeEngine.analyzeDocument(text, format, false);
+    lastDocAnalysis = result;
+
+    if (!result.success) {
+      log(`Document analysis failed: ${result.error}`, 'error');
+      return;
+    }
+
+    log(`Document analyzed: ${result.elements.length} elements, format=${result.format}`, 'success');
+    renderDocResults(result);
+    docResultsSection.hidden = false;
+  } catch (err) {
+    log(`Document analysis error: ${err instanceof Error ? err.message : err}`, 'error');
+  } finally {
+    docAnalyzeBtn.disabled = false;
+    docAnalyzeBtn.classList.remove('analyzing');
+    docAnalyzeBtn.textContent = 'Analyze Structure';
+  }
+});
+
+// Tab switching
+document.querySelectorAll('.doc-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.doc-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    const target = (tab as HTMLElement).dataset.tab;
+    docTabElements.hidden = target !== 'elements';
+    docTabHighlight.hidden = target !== 'highlight';
+    docTabScheme.hidden = target !== 'scheme';
+  });
+});
+
+function renderDocResults(result: DocumentAnalysisResult) {
+  // Stats bar
+  if (result.stats) {
+    const s = result.stats;
+    docStatsBar.innerHTML = '';
+    const addStat = (label: string, value: string | number) => {
+      const span = document.createElement('span');
+      span.className = 'doc-stat';
+      span.innerHTML = `<span class="doc-stat-label">${label}:</span> ${value}`;
+      docStatsBar.appendChild(span);
+    };
+    addStat('Format', result.format ?? 'unknown');
+    addStat('Elements', s.totalElements);
+    addStat('Words', s.totalWords);
+    addStat('Chars', s.totalChars);
+    addStat('Time', `${s.analysisTimeMs.toFixed(0)}ms`);
+    if (s.aiEnhanced) addStat('AI', 'enhanced');
+  }
+
+  // Elements tab
+  docTabElements.innerHTML = '';
+  for (const el of result.elements) {
+    const row = document.createElement('div');
+    row.className = 'doc-element';
+
+    const badge = document.createElement('span');
+    badge.className = 'doc-el-badge';
+    badge.dataset.type = el.type;
+    badge.textContent = el.type.replace('_', ' ');
+    row.appendChild(badge);
+
+    const text = document.createElement('span');
+    text.className = 'doc-el-text';
+    const preview = el.text.length > 120 ? el.text.slice(0, 120) + '...' : el.text;
+    text.textContent = preview;
+    row.appendChild(text);
+
+    if (el.voice) {
+      const voiceDiv = document.createElement('span');
+      voiceDiv.className = 'doc-el-voice';
+      if (el.voice.rate !== 1.0) {
+        const tag = document.createElement('span');
+        tag.className = 'doc-voice-tag';
+        tag.textContent = `${el.voice.rate.toFixed(1)}x`;
+        voiceDiv.appendChild(tag);
+      }
+      if (el.voice.pitch !== 1.0) {
+        const tag = document.createElement('span');
+        tag.className = 'doc-voice-tag';
+        tag.textContent = `P${el.voice.pitch.toFixed(1)}`;
+        voiceDiv.appendChild(tag);
+      }
+      if (el.voice.voiceHint) {
+        const tag = document.createElement('span');
+        tag.className = 'doc-voice-tag';
+        tag.textContent = el.voice.voiceHint;
+        voiceDiv.appendChild(tag);
+      }
+      row.appendChild(voiceDiv);
+    }
+
+    docTabElements.appendChild(row);
+  }
+
+  // Highlight tab
+  docTabHighlight.innerHTML = '';
+  const hlDiv = document.createElement('div');
+  hlDiv.className = 'doc-highlight-preview';
+  for (const el of result.elements) {
+    const span = document.createElement('span');
+    span.className = `doc-hl-${el.type}`;
+    span.textContent = el.text;
+    hlDiv.appendChild(span);
+  }
+  docTabHighlight.appendChild(hlDiv);
+
+  // Voice scheme tab
+  docTabScheme.innerHTML = '';
+  const uniqueTypes = new Map<string, DocumentElement>();
+  for (const el of result.elements) {
+    if (el.voice && !uniqueTypes.has(el.type)) {
+      uniqueTypes.set(el.type, el);
+    }
+  }
+
+  if (uniqueTypes.size === 0) {
+    docTabScheme.textContent = 'No voice scheme data available.';
+    return;
+  }
+
+  const table = document.createElement('table');
+  table.className = 'doc-scheme-table';
+  table.innerHTML = `<thead><tr>
+    <th>Element</th><th>Rate</th><th>Pitch</th><th>Volume</th><th>Pause</th><th>Voice Hint</th>
+  </tr></thead>`;
+  const tbody = document.createElement('tbody');
+
+  for (const [type, el] of uniqueTypes) {
+    const v = el.voice!;
+    const tr = document.createElement('tr');
+
+    const tdType = document.createElement('td');
+    const typeBadge = document.createElement('span');
+    typeBadge.className = 'doc-el-badge';
+    typeBadge.dataset.type = type;
+    typeBadge.textContent = type.replace('_', ' ');
+    tdType.appendChild(typeBadge);
+    tr.appendChild(tdType);
+
+    // Rate bar
+    const tdRate = document.createElement('td');
+    tdRate.innerHTML = `<div class="doc-scheme-bar"><div class="doc-scheme-bar-fill rate" style="width:${Math.min(v.rate / 2 * 100, 100)}%"></div></div> ${v.rate.toFixed(1)}x`;
+    tr.appendChild(tdRate);
+
+    // Pitch bar
+    const tdPitch = document.createElement('td');
+    tdPitch.innerHTML = `<div class="doc-scheme-bar"><div class="doc-scheme-bar-fill pitch" style="width:${Math.min(v.pitch / 2 * 100, 100)}%"></div></div> ${v.pitch.toFixed(1)}`;
+    tr.appendChild(tdPitch);
+
+    // Volume bar
+    const tdVol = document.createElement('td');
+    tdVol.innerHTML = `<div class="doc-scheme-bar"><div class="doc-scheme-bar-fill volume" style="width:${Math.min(v.volume / 1.5 * 100, 100)}%"></div></div> ${v.volume.toFixed(1)}`;
+    tr.appendChild(tdVol);
+
+    // Pause
+    const tdPause = document.createElement('td');
+    tdPause.textContent = `${v.pauseBeforeMs}/${v.pauseAfterMs}ms`;
+    tdPause.style.fontSize = '0.75rem';
+    tdPause.style.color = 'var(--text-dim)';
+    tr.appendChild(tdPause);
+
+    // Voice hint
+    const tdHint = document.createElement('td');
+    tdHint.textContent = v.voiceHint ?? '—';
+    tdHint.style.fontSize = '0.75rem';
+    tdHint.style.color = 'var(--text-dim)';
+    tr.appendChild(tdHint);
+
+    tbody.appendChild(tr);
+  }
+
+  table.appendChild(tbody);
+  docTabScheme.appendChild(table);
+}
 
 // ── Boot ──────────────────────────────────────────────────
 init().then(() => {

@@ -13,10 +13,6 @@
       "crepe": { "device": "cpu" }
     }
   },
-  "voice_designer": {
-    "device": "cpu",
-    "notes": "GPU strongly recommended for Parler-TTS"
-  },
   "document_analyzer": {
     "device": "cpu",
     "provider": "ollama",

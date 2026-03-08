@@ -23,13 +23,18 @@ Usage:
 
 import argparse
 import base64
+import hashlib
 import io
 import json
 import os
+import shlex
 import struct
+import subprocess
 import threading
 import time
 import uuid
+import urllib.error
+import urllib.request
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from socketserver import ThreadingMixIn
@@ -38,16 +43,41 @@ from urllib.parse import urlparse
 import numpy as np
 
 # Load .env for API keys
-try:
-    from dotenv import load_dotenv
-    _env_path = Path(__file__).resolve().parents[2] / ".env"
-    if _env_path.exists():
+def _load_env_fallback(env_path: Path) -> int:
+    """Minimal .env loader used when python-dotenv is not installed."""
+    loaded = 0
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[7:].strip()
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key or key in os.environ:
+            continue
+        if value and value[0] in ("'", '"'):
+            try:
+                value = shlex.split(value)[0]
+            except Exception:
+                value = value.strip("'\"")
+        os.environ[key] = value
+        loaded += 1
+    return loaded
+
+
+_env_path = Path(__file__).resolve().parents[2] / ".env"
+if _env_path.exists():
+    try:
+        from dotenv import load_dotenv
         load_dotenv(_env_path)
         print(f"  [voice-designer] Loaded .env from {_env_path}")
-    else:
-        load_dotenv()
-except ImportError:
-    pass
+    except ImportError:
+        loaded = _load_env_fallback(_env_path)
+        print(f"  [voice-designer] Loaded {loaded} env entries from {_env_path} (fallback loader)")
 
 # ── Gemini AI client ─────────────────────────────────────────────────
 
@@ -130,6 +160,355 @@ def _gemini_text(prompt: str, fallback: str = "") -> str:
     except Exception as e:
         print(f"  [voice-designer] Gemini request failed: {e}")
         return fallback
+
+# ── ElevenLabs API client ────────────────────────────────────────────
+
+_elevenlabs_api_key = None
+_elevenlabs_available = False
+_elevenlabs_call_times: list[float] = []
+_elevenlabs_cache: dict[str, dict] = {}  # MD5 -> result, max 50 entries
+_ELEVENLABS_RPM = 10
+_ELEVENLABS_CACHE_MAX = 50
+
+
+def _init_elevenlabs() -> bool:
+    """Initialize ElevenLabs API from env."""
+    global _elevenlabs_api_key, _elevenlabs_available
+    if _elevenlabs_api_key is not None:
+        return _elevenlabs_available
+
+    key = os.environ.get("ELEVEN_LABS_API_KEY") or os.environ.get("ELEVENLABS_API_KEY")
+    if not key:
+        print("  [voice-designer] No ELEVEN_LABS_API_KEY found — ElevenLabs unavailable")
+        _elevenlabs_api_key = "unavailable"
+        _elevenlabs_available = False
+        return False
+
+    # Validate key with a quick user check
+    try:
+        req = urllib.request.Request(
+            "https://api.elevenlabs.io/v1/user",
+            headers={"xi-api-key": key, "Accept": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read())
+            tier = data.get("subscription", {}).get("tier", "unknown")
+            chars = data.get("subscription", {}).get("character_count", 0)
+            limit = data.get("subscription", {}).get("character_limit", 0)
+            print(f"  [voice-designer] ElevenLabs initialized — tier: {tier}, "
+                  f"chars: {chars}/{limit}")
+            _elevenlabs_api_key = key
+            _elevenlabs_available = True
+            return True
+    except Exception as e:
+        print(f"  [voice-designer] ElevenLabs init failed: {e}")
+        _elevenlabs_api_key = "unavailable"
+        _elevenlabs_available = False
+        return False
+
+
+def _elevenlabs_request(method: str, path: str, body: dict | None = None,
+                        timeout: int = 30) -> dict | bytes:
+    """Low-level HTTP request to ElevenLabs API."""
+    if not _elevenlabs_available or _elevenlabs_api_key in (None, "unavailable"):
+        raise RuntimeError("ElevenLabs not available")
+
+    url = f"https://api.elevenlabs.io{path}"
+    headers = {
+        "xi-api-key": _elevenlabs_api_key,
+        "Accept": "application/json",
+    }
+
+    data = None
+    if body is not None:
+        data = json.dumps(body).encode()
+        headers["Content-Type"] = "application/json"
+
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            ct = resp.headers.get("Content-Type", "")
+            raw = resp.read()
+            if "application/json" in ct:
+                return json.loads(raw)
+            return raw  # binary (audio)
+    except urllib.error.HTTPError as e:
+        body = ""
+        try:
+            body = e.read().decode()[:500]
+        except Exception:
+            pass
+        raise RuntimeError(f"HTTP Error {e.code}: {body or e.reason}")
+
+
+def _elevenlabs_rate_check():
+    """Simple rate limiter — blocks if exceeding RPM."""
+    now = time.time()
+    _elevenlabs_call_times[:] = [t for t in _elevenlabs_call_times if now - t < 60]
+    if len(_elevenlabs_call_times) >= _ELEVENLABS_RPM:
+        wait = 60 - (now - _elevenlabs_call_times[0])
+        if wait > 0:
+            print(f"  [voice-designer] ElevenLabs rate limit — waiting {wait:.1f}s")
+            time.sleep(wait)
+    _elevenlabs_call_times.append(time.time())
+
+
+def _mp3_bytes_to_pcm_f32(mp3_bytes: bytes, target_sr: int = 24000) -> tuple[bytes, int]:
+    """Convert MP3 bytes to PCM float32 via ffmpeg, fallback to librosa."""
+    # Try ffmpeg first (faster, no Python deps)
+    try:
+        proc = subprocess.run(
+            ["ffmpeg", "-i", "pipe:0", "-f", "f32le", "-acodec", "pcm_f32le",
+             "-ac", "1", "-ar", str(target_sr), "pipe:1"],
+            input=mp3_bytes, capture_output=True, timeout=10,
+        )
+        if proc.returncode == 0 and len(proc.stdout) > 0:
+            return proc.stdout, target_sr
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+    # Fallback: librosa
+    try:
+        import librosa
+        audio_np, sr = librosa.load(io.BytesIO(mp3_bytes), sr=target_sr, mono=True)
+        return audio_np.astype(np.float32).tobytes(), target_sr
+    except Exception as e:
+        raise RuntimeError(f"Cannot convert MP3 to PCM: {e}")
+
+
+def _mp3_base64_to_pcm_f32(mp3_b64: str, target_sr: int = 24000) -> tuple[str, int]:
+    """Decode base64 MP3, convert to PCM f32, return as base64."""
+    mp3_bytes = base64.b64decode(mp3_b64)
+    pcm_bytes, sr = _mp3_bytes_to_pcm_f32(mp3_bytes, target_sr)
+    return base64.b64encode(pcm_bytes).decode("ascii"), sr
+
+
+_ELEVENLABS_MIN_PREVIEW = "The quick brown fox jumped over the lazy dog, and the sun set behind the mountains with a warm golden glow that painted the sky in shades of amber and rose."
+
+def elevenlabs_design_voice(description: str, preview_text: str) -> dict:
+    """Design voice via ElevenLabs text-to-voice preview API."""
+    if not _init_elevenlabs():
+        return {"success": False, "error": "ElevenLabs not available"}
+
+    # ElevenLabs requires >= 20 chars for description
+    if len(description) < 20:
+        description = description + " with a clear, natural speaking style"
+
+    # ElevenLabs requires >= 100 chars of preview text
+    if len(preview_text) < 100:
+        preview_text = _ELEVENLABS_MIN_PREVIEW
+
+    # NOTE: No caching — generated_voice_id tokens are single-use
+    _elevenlabs_rate_check()
+
+    try:
+        result = _elevenlabs_request("POST", "/v1/text-to-voice/create-previews", {
+            "voice_description": description,
+            "text": preview_text[:500],  # ElevenLabs has a text limit
+        }, timeout=60)
+
+        candidates = []
+        previews = result.get("previews", [])
+        for preview in previews:
+            audio_b64_mp3 = preview.get("audio_base_64", "")
+            generated_id = preview.get("generated_voice_id", "")
+
+            # Convert MP3 to PCM f32 for consistent handling
+            pcm_b64 = None
+            sample_rate = 24000
+            if audio_b64_mp3:
+                try:
+                    pcm_b64, sample_rate = _mp3_base64_to_pcm_f32(audio_b64_mp3)
+                except Exception as e:
+                    print(f"  [voice-designer] MP3 conversion failed: {e}")
+                    pcm_b64 = audio_b64_mp3  # pass through as-is
+                    sample_rate = 44100
+
+            candidates.append({
+                "generated_voice_id": generated_id,
+                "audio_base64": pcm_b64,
+                "audio_base64_mp3": audio_b64_mp3,
+                "sample_rate": sample_rate,
+            })
+
+        response = {
+            "success": True,
+            "candidates": candidates,
+            "description": description,
+        }
+
+        print(f"  [voice-designer] ElevenLabs design: {len(candidates)} candidates")
+        return response
+
+    except urllib.error.HTTPError as e:
+        body = e.read().decode() if e.fp else ""
+        print(f"  [voice-designer] ElevenLabs API error {e.code}: {body[:200]}")
+        return {"success": False, "error": f"ElevenLabs API error {e.code}: {body[:200]}"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def elevenlabs_create_voice(name: str, description: str,
+                            generated_voice_id: str) -> dict:
+    """Create a permanent voice from a preview."""
+    if not _init_elevenlabs():
+        return {"success": False, "error": "ElevenLabs not available"}
+
+    _elevenlabs_rate_check()
+
+    # ElevenLabs requires >= 20 chars for voice_description
+    if len(description) < 20:
+        description = description + " — custom designed voice"
+
+    try:
+        result = _elevenlabs_request("POST", "/v1/text-to-voice/create-voice-from-preview", {
+            "voice_name": name,
+            "voice_description": description,
+            "generated_voice_id": generated_voice_id,
+        })
+
+        voice_id = result.get("voice_id", "")
+        print(f"  [voice-designer] ElevenLabs voice created: {voice_id}")
+        return {"success": True, "voice_id": voice_id}
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def elevenlabs_synthesize(text: str, voice_id: str,
+                          model_id: str = "eleven_multilingual_v2",
+                          voice_settings: dict | None = None) -> dict:
+    """Synthesize speech with an ElevenLabs voice."""
+    if not _init_elevenlabs():
+        return {"success": False, "error": "ElevenLabs not available"}
+
+    _elevenlabs_rate_check()
+
+    body = {"text": text, "model_id": model_id}
+    if voice_settings:
+        body["voice_settings"] = voice_settings
+
+    try:
+        audio_bytes = _elevenlabs_request(
+            "POST", f"/v1/text-to-speech/{voice_id}", body, timeout=30)
+
+        if isinstance(audio_bytes, dict):
+            return {"success": False, "error": audio_bytes.get("detail", "Unknown error")}
+
+        # Convert MP3 to PCM
+        pcm_bytes, sr = _mp3_bytes_to_pcm_f32(audio_bytes)
+        pcm_b64 = base64.b64encode(pcm_bytes).decode("ascii")
+
+        return {
+            "success": True,
+            "audio_base64": pcm_b64,
+            "sample_rate": sr,
+            "duration_ms": len(pcm_bytes) / 4 / sr * 1000,  # f32 = 4 bytes per sample
+        }
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def elevenlabs_health() -> dict:
+    """Check ElevenLabs API status."""
+    if not _init_elevenlabs():
+        return {"available": False, "error": "Not configured"}
+
+    try:
+        req = urllib.request.Request(
+            "https://api.elevenlabs.io/v1/user",
+            headers={"xi-api-key": _elevenlabs_api_key, "Accept": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read())
+            sub = data.get("subscription", {})
+            return {
+                "available": True,
+                "tier": sub.get("tier", "unknown"),
+                "character_count": sub.get("character_count", 0),
+                "character_limit": sub.get("character_limit", 0),
+                "remaining": sub.get("character_limit", 0) - sub.get("character_count", 0),
+            }
+    except Exception as e:
+        return {"available": False, "error": str(e)}
+
+
+# ── ElevenLabs prompt composer ───────────────────────────────────────
+
+def compose_elevenlabs_description(anatomy_specs: dict,
+                                   general_description: str = "") -> str:
+    """Use Gemini to polish anatomy specs into an ElevenLabs description."""
+    if not anatomy_specs and not general_description:
+        return "A natural speaking voice"
+
+    result = _gemini_text(f"""Write a voice description for the ElevenLabs text-to-voice API.
+
+User's intent: "{general_description}"
+Voice anatomy specs: {json.dumps(anatomy_specs) if anatomy_specs else "none specified"}
+
+Write a natural English paragraph (2-3 sentences) describing this voice.
+Focus on: gender/age, pitch, timbre, texture, speaking style, emotional tone.
+Be specific and descriptive. Do NOT use markdown or quotes.
+Example: "A young woman with a warm, rich voice. She speaks clearly with moderate pacing and a friendly, approachable tone. Her voice has a slightly breathy quality with natural expressiveness." """)
+
+    if result and len(result) > 20 and not result.startswith("{"):
+        return result.strip().strip('"').strip("'")
+
+    return _compose_elevenlabs_description_basic(anatomy_specs, general_description)
+
+
+def _compose_elevenlabs_description_basic(anatomy_specs: dict,
+                                          general_description: str = "") -> str:
+    """Keyword fallback for ElevenLabs description."""
+    parts = []
+    if general_description:
+        parts.append(general_description.rstrip("."))
+
+    _EL_AXIS_TEMPLATES = {
+        "pitch": {"deep": "deep-voiced", "low": "low-pitched", "medium": "medium-pitched",
+                   "high": "higher-pitched", "very high": "high-pitched"},
+        "timbre": {"warm": "warm tone", "bright": "bright, clear tone",
+                    "dark": "dark, smooth tone", "rich": "rich tonal quality"},
+        "texture": {"clear": "crystal clear voice", "breathy": "slightly breathy",
+                     "husky": "husky voice", "smooth": "silky smooth delivery"},
+        "emotion": {"neutral": "professional demeanor", "warm": "friendly manner",
+                     "authoritative": "commanding presence", "energetic": "upbeat energy"},
+        "tempo": {"slow": "deliberate pacing", "moderate": "natural pacing",
+                   "fast": "brisk delivery", "varied": "dynamic pacing"},
+    }
+
+    for element, templates in _EL_AXIS_TEMPLATES.items():
+        spec = anatomy_specs.get(element, "").lower()
+        for key, template in templates.items():
+            if key in spec:
+                parts.append(template)
+                break
+
+    if not parts:
+        return "A natural speaking voice"
+    return ". ".join(parts) + "."
+
+
+# ── Voice Crafting Engine integration ────────────────────────────────
+
+_crafting_engine = None
+
+
+def _get_crafting_engine():
+    """Lazy-init the crafting engine with proper function bindings."""
+    global _crafting_engine
+    if _crafting_engine is None:
+        from voice_crafting import CraftingEngine
+        _crafting_engine = CraftingEngine(
+            elevenlabs_design_fn=elevenlabs_design_voice,
+            elevenlabs_create_fn=elevenlabs_create_voice,
+            parler_design_fn=design_voice,
+            save_profile_fn=save_profile,
+            gemini_text_fn=_gemini_text,
+        )
+    return _crafting_engine
+
 
 # ── Lazy-loaded models ────────────────────────────────────────────────
 
@@ -2070,6 +2449,12 @@ class VoiceDesignerHandler(BaseHTTPRequestHandler):
             self._handle_model_status()
         elif parsed.path == "/voice_anatomy":
             self._handle_voice_anatomy_get()
+        elif parsed.path == "/crafting/archetypes":
+            self._handle_crafting_archetypes()
+        elif parsed.path == "/crafting/axes":
+            self._handle_crafting_axes()
+        elif parsed.path.startswith("/crafting/session/"):
+            self._handle_crafting_get_session()
         else:
             self.send_error(404)
 
@@ -2095,6 +2480,18 @@ class VoiceDesignerHandler(BaseHTTPRequestHandler):
             "/suggest_from_palette": self._handle_suggest_from_palette,
             "/generate_clone_sample": self._handle_generate_clone_sample,
             "/interpret": self._handle_interpret,
+            # ElevenLabs endpoints
+            "/elevenlabs/design": self._handle_elevenlabs_design,
+            "/elevenlabs/create_voice": self._handle_elevenlabs_create_voice,
+            "/elevenlabs/synthesize": self._handle_elevenlabs_synthesize,
+            # Voice crafting endpoints
+            "/crafting/start": self._handle_crafting_start,
+            "/crafting/explore": self._handle_crafting_explore,
+            "/crafting/select": self._handle_crafting_select,
+            "/crafting/regenerate": self._handle_crafting_regenerate,
+            "/crafting/skip": self._handle_crafting_skip,
+            "/crafting/back": self._handle_crafting_back,
+            "/crafting/finish": self._handle_crafting_finish,
         }
         handler = handlers.get(parsed.path)
         if handler:
@@ -2186,6 +2583,7 @@ class VoiceDesignerHandler(BaseHTTPRequestHandler):
             "gemini_model": _gemini_model_name if gemini_status == "connected" else None,
             "device": _device,
             "num_profiles": len(list(_get_profiles_dir().glob("*.json"))),
+            "elevenlabs": elevenlabs_health(),
         }).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -3093,6 +3491,191 @@ class VoiceDesignerHandler(BaseHTTPRequestHandler):
             import traceback
             traceback.print_exc()
             self._send_json(500, {"success": False, "error": str(e)})
+
+    # ── ElevenLabs endpoint handlers ────────────────────────────────
+
+    def _handle_elevenlabs_design(self):
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length)
+            data = json.loads(body)
+            description = data.get("description", "")
+            preview_text = data.get("preview_text", "Hello, this is a preview of the designed voice.")
+            if not description:
+                self._send_json(400, {"success": False, "error": "Missing 'description'"})
+                return
+            result = elevenlabs_design_voice(description, preview_text)
+            self._send_json(200 if result["success"] else 500, result)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self._send_json(500, {"success": False, "error": str(e)})
+
+    def _handle_elevenlabs_create_voice(self):
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length)
+            data = json.loads(body)
+            name = data.get("name", "")
+            description = data.get("description", "")
+            generated_voice_id = data.get("generated_voice_id", "")
+            if not name or not generated_voice_id:
+                self._send_json(400, {"success": False, "error": "Missing 'name' or 'generated_voice_id'"})
+                return
+            result = elevenlabs_create_voice(name, description, generated_voice_id)
+            self._send_json(200 if result["success"] else 500, result)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self._send_json(500, {"success": False, "error": str(e)})
+
+    def _handle_elevenlabs_synthesize(self):
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length)
+            data = json.loads(body)
+            text = data.get("text", "")
+            voice_id = data.get("voice_id", "")
+            if not text or not voice_id:
+                self._send_json(400, {"success": False, "error": "Missing 'text' or 'voice_id'"})
+                return
+            result = elevenlabs_synthesize(
+                text, voice_id,
+                model_id=data.get("model_id", "eleven_multilingual_v2"),
+                voice_settings=data.get("voice_settings"),
+            )
+            self._send_json(200 if result["success"] else 500, result)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self._send_json(500, {"success": False, "error": str(e)})
+
+    # ── Voice crafting endpoint handlers ─────────────────────────────
+
+    def _handle_crafting_start(self):
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length)
+            data = json.loads(body)
+            engine = _get_crafting_engine()
+            result = engine.start_session(
+                mode=data.get("mode", "guided"),
+                archetype_id=data.get("archetype_id"),
+                freeform_text=data.get("freeform_text"),
+            )
+            self._send_json(200 if result.get("success") else 400, result)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self._send_json(500, {"success": False, "error": str(e)})
+
+    def _handle_crafting_explore(self):
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length)
+            data = json.loads(body)
+            engine = _get_crafting_engine()
+            result = engine.explore_axis(
+                session_id=data.get("session_id", ""),
+                axis_id=data.get("axis_id"),
+                preview_text=data.get("preview_text"),
+            )
+            self._send_json(200 if result.get("success") else 400, result)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self._send_json(500, {"success": False, "error": str(e)})
+
+    def _handle_crafting_select(self):
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length)
+            data = json.loads(body)
+            engine = _get_crafting_engine()
+            result = engine.select_choice(
+                session_id=data.get("session_id", ""),
+                axis_id=data.get("axis_id", ""),
+                archetype_id=data.get("archetype_id", ""),
+                preview_index=data.get("preview_index", 0),
+            )
+            self._send_json(200 if result.get("success") else 400, result)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self._send_json(500, {"success": False, "error": str(e)})
+
+    def _handle_crafting_regenerate(self):
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length)
+            data = json.loads(body)
+            engine = _get_crafting_engine()
+            result = engine.regenerate(
+                session_id=data.get("session_id", ""),
+                preview_text=data.get("preview_text"),
+            )
+            self._send_json(200 if result.get("success") else 400, result)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self._send_json(500, {"success": False, "error": str(e)})
+
+    def _handle_crafting_skip(self):
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length)
+            data = json.loads(body)
+            engine = _get_crafting_engine()
+            result = engine.skip_axis(session_id=data.get("session_id", ""))
+            self._send_json(200 if result.get("success") else 400, result)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self._send_json(500, {"success": False, "error": str(e)})
+
+    def _handle_crafting_back(self):
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length)
+            data = json.loads(body)
+            engine = _get_crafting_engine()
+            result = engine.go_back(session_id=data.get("session_id", ""))
+            self._send_json(200 if result.get("success") else 400, result)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self._send_json(500, {"success": False, "error": str(e)})
+
+    def _handle_crafting_finish(self):
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length)
+            data = json.loads(body)
+            engine = _get_crafting_engine()
+            result = engine.finish(
+                session_id=data.get("session_id", ""),
+                profile_name=data.get("profile_name"),
+            )
+            self._send_json(200 if result.get("success") else 400, result)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self._send_json(500, {"success": False, "error": str(e)})
+
+    def _handle_crafting_get_session(self):
+        parsed = urlparse(self.path)
+        session_id = parsed.path.split("/crafting/session/")[-1].strip("/")
+        engine = _get_crafting_engine()
+        result = engine.get_session(session_id)
+        self._send_json(200 if result.get("success") else 404, result)
+
+    def _handle_crafting_archetypes(self):
+        from voice_crafting import get_archetypes
+        self._send_json(200, {"archetypes": get_archetypes()})
+
+    def _handle_crafting_axes(self):
+        from voice_crafting import get_axes
+        self._send_json(200, {"axes": get_axes()})
 
     def _send_json(self, code: int, data: dict):
         body = json.dumps(data).encode()

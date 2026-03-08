@@ -17,7 +17,7 @@
         <span class="stack-dot" id="stack-dot-ws" title="WebSocket Server (21740)"></span>
         <span class="stack-dot" id="stack-dot-alignment" title="Alignment Server (21747)"></span>
         <span class="stack-dot" id="stack-dot-quality" title="Quality Server (21748)"></span>
-        <span class="stack-dot" id="stack-dot-designer" title="Voice Designer (21749)"></span>
+        <span class="stack-dot" id="stack-dot-doc-analyzer" title="Document Analyzer (21750)"></span>
         <span class="stack-summary" id="stack-summary">Checking...</span>
       </div>
       <button type="button" id="server-dashboard-btn" class="server-dashboard-btn" title="Server Dashboard">Servers</button>
@@ -50,16 +50,59 @@
           <div class="voice-picker-actions">
             <div id="voice-selected-display" class="voice-selected-display">No voice selected</div>
             <button type="button" id="voice-sample-btn" class="voice-sample-btn" title="Record or upload a voice sample for cloning">Voice Cloning</button>
-            <button type="button" id="voice-designer-btn" class="voice-designer-btn" title="Design a custom voice from a text description">Voice Designer</button>
+            <button type="button" id="voice-crafting-btn" class="voice-crafting-btn" title="Guided iterative voice crafting">Craft Voice</button>
             <button type="button" id="piper-download-btn" class="piper-download-btn" title="Download Piper neural voices">+ Piper Voices</button>
           </div>
         </div>
       </section>
 
       <section class="card">
-        <label for="text-input">Text</label>
+        <div class="text-label-row">
+          <label for="text-input">Text</label>
+          <div class="doc-mode-toggle">
+            <label for="doc-mode-check" class="doc-mode-label">
+              <input type="checkbox" id="doc-mode-check"> Document Mode
+            </label>
+          </div>
+        </div>
         <textarea id="text-input" rows="6" placeholder="Type or paste text here..."></textarea>
+        <div id="doc-controls" class="doc-controls" hidden>
+          <div class="doc-controls-row">
+            <select id="doc-format-select">
+              <option value="auto">Auto-detect</option>
+              <option value="plain">Plain Text</option>
+              <option value="markdown">Markdown</option>
+              <option value="html">HTML</option>
+            </select>
+            <button type="button" id="doc-analyze-btn" class="doc-analyze-btn">Analyze Structure</button>
+            <button type="button" id="doc-sample-btn" class="doc-sample-btn" title="Load sample text">Samples</button>
+          </div>
+        </div>
       </section>
+
+      <section class="card doc-results-section" id="doc-results-section" hidden>
+        <div class="doc-results-header">
+          <h3>Document Structure</h3>
+          <div class="doc-results-tabs">
+            <button type="button" class="doc-tab active" data-tab="elements">Elements</button>
+            <button type="button" class="doc-tab" data-tab="highlight">Preview</button>
+            <button type="button" class="doc-tab" data-tab="scheme">Voice Scheme</button>
+          </div>
+        </div>
+        <div class="doc-stats-bar" id="doc-stats-bar"></div>
+        <div class="doc-tab-content" id="doc-tab-elements"></div>
+        <div class="doc-tab-content" id="doc-tab-highlight" hidden></div>
+        <div class="doc-tab-content" id="doc-tab-scheme" hidden></div>
+      </section>
+
+      <!-- Document samples dropdown (anchored to Samples button) -->
+      <div id="doc-samples-dropdown" class="doc-samples-dropdown" hidden>
+        <div class="doc-sample-item" data-sample="novel">Novel excerpt</div>
+        <div class="doc-sample-item" data-sample="markdown">Markdown document</div>
+        <div class="doc-sample-item" data-sample="html">HTML content</div>
+        <div class="doc-sample-item" data-sample="dialogue">Dialogue-heavy</div>
+        <div class="doc-sample-item" data-sample="technical">Technical / code</div>
+      </div>
 
       <section class="card controls-row">
         <div class="slider-group">
@@ -247,71 +290,98 @@
     </div>
   </div>
 
-  <!-- Voice Designer modal -->
-  <div id="designer-modal" class="modal-overlay" hidden>
-    <div class="modal designer-modal">
+  <!-- Voice Crafting Studio modal -->
+  <div id="crafting-modal" class="modal-overlay" hidden>
+    <div class="modal crafting-modal">
       <div class="modal-header">
-        <h2>Voice Designer</h2>
+        <h2>Voice Crafting Studio</h2>
+        <div id="crafting-progress" class="crafting-progress"></div>
       </div>
-      <div class="designer-modal-body">
-        <p class="designer-description">Design a custom voice by describing it in natural language, or blend multiple voice samples into a new composite voice.</p>
-
-        <div class="designer-section">
-          <h3>Design from Description</h3>
-          <textarea id="designer-description" rows="3" placeholder="Describe the voice you want, e.g. 'A warm female voice with a calm tone and moderate pace'"></textarea>
-          <div class="designer-preview-row">
-            <input type="text" id="designer-preview-text" placeholder="Preview text..." value="Hello, this is a preview of the designed voice." />
-            <button type="button" id="designer-generate-btn" class="designer-generate-btn">Generate</button>
-          </div>
-          <div id="designer-preview-section" class="designer-preview-section" hidden>
-            <audio id="designer-preview-player" controls></audio>
-            <button type="button" id="designer-save-btn" class="designer-save-btn">Save as Profile</button>
-          </div>
+      <div id="crafting-loading" class="phase-loading" hidden>
+        <div class="phase-loading-head">
+          <span id="crafting-loading-label" class="phase-loading-label">Preparing...</span>
+          <span id="crafting-loading-percent" class="phase-loading-percent">0%</span>
         </div>
-
-        <div class="designer-section">
-          <h3>Blend Voice Samples</h3>
-          <p class="designer-blend-hint">Select 2+ voice samples and adjust weights to create a blended voice.</p>
-          <div id="designer-blend-list" class="designer-blend-list">
-            <div class="designer-blend-empty">Upload voice samples in the Voice Cloning panel first.</div>
-          </div>
-          <button type="button" id="designer-blend-btn" class="designer-blend-btn" disabled>Blend Selected</button>
-          <div id="designer-blend-result" class="designer-blend-result" hidden>
-            <span class="blend-success">Blend complete!</span>
-            <button type="button" id="designer-blend-save-btn" class="designer-save-btn">Save Blend as Profile</button>
-          </div>
+        <div class="phase-loading-bar">
+          <div id="crafting-loading-fill" class="phase-loading-fill"></div>
         </div>
+        <div id="crafting-loading-steps" class="phase-loading-steps"></div>
+      </div>
+      <div class="crafting-modal-body">
 
-        <div class="designer-section">
-          <h3>Saved Voice Profiles</h3>
-          <div id="designer-profiles-list" class="designer-profiles-list">
-            <div class="designer-profiles-empty">No voice profiles saved yet.</div>
-          </div>
-        </div>
-
-        <div class="designer-section designer-test-section">
-          <h3>Gemini AI Integration</h3>
-          <div id="gemini-status-badge" class="gemini-status-badge gemini-checking">
-            <span class="gemini-dot"></span>
-            <span class="gemini-label">Checking Gemini...</span>
-          </div>
-          <div class="gemini-test-zone">
-            <textarea id="gemini-test-input" rows="2" placeholder="Try: 'the guy from Allstate commercials' or 'a voice like honey dripping over warm bread'"></textarea>
-            <div class="gemini-test-actions">
-              <button type="button" id="gemini-interpret-btn" class="gemini-btn" disabled>Interpret</button>
-              <button type="button" id="gemini-identify-btn" class="gemini-btn" disabled>Identify</button>
-              <button type="button" id="gemini-decompose-btn" class="gemini-btn" disabled>Decompose</button>
+        <!-- Step 0: Mode Selection -->
+        <div id="crafting-mode-select" class="crafting-step">
+          <p class="crafting-subtitle">Choose how to begin designing your voice.</p>
+          <div class="crafting-mode-cards">
+            <div class="crafting-mode-card" data-mode="guided">
+              <div class="mode-card-icon">&#9654;</div>
+              <div class="mode-card-title">Guided Crafting</div>
+              <div class="mode-card-desc">Walk through each voice quality axis step by step.</div>
             </div>
-            <div id="gemini-test-result" class="gemini-test-result" hidden></div>
+            <div class="crafting-mode-card" data-mode="archetype">
+              <div class="mode-card-icon">&#9733;</div>
+              <div class="mode-card-title">Start from Archetype</div>
+              <div class="mode-card-desc">Begin with a preset voice type and refine from there.</div>
+            </div>
+            <div class="crafting-mode-card" data-mode="freeform">
+              <div class="mode-card-icon">&#9998;</div>
+              <div class="mode-card-title">Describe Your Voice</div>
+              <div class="mode-card-desc">Enter a text description and let AI map it to axes.</div>
+            </div>
           </div>
-          <p class="designer-blend-hint" style="margin-top:10px;">
-            <a href="http://localhost:5195" target="_blank" class="test-link-btn" id="open-test-workbench">Open Full Test Workbench</a>
-          </p>
         </div>
+
+        <!-- Step 0b: Archetype Grid -->
+        <div id="crafting-archetype-grid" class="crafting-step" hidden>
+          <p class="crafting-subtitle">Select a starting archetype.</p>
+          <div id="crafting-archetypes" class="crafting-archetypes"></div>
+        </div>
+
+        <!-- Step 0c: Freeform Input -->
+        <div id="crafting-freeform" class="crafting-step" hidden>
+          <p class="crafting-subtitle">Describe the voice you want.</p>
+          <textarea id="crafting-freeform-input" rows="3" placeholder="e.g. A warm, deep male voice with a slight British accent..."></textarea>
+          <button type="button" id="crafting-freeform-start" class="modal-btn">Interpret &amp; Start</button>
+        </div>
+
+        <!-- Step N: Axis Exploration -->
+        <div id="crafting-axis-step" class="crafting-step" hidden>
+          <div class="crafting-axis-header">
+            <span id="crafting-axis-counter" class="crafting-axis-counter"></span>
+            <h3 id="crafting-axis-label"></h3>
+            <p id="crafting-axis-desc" class="crafting-axis-desc"></p>
+          </div>
+          <div id="crafting-samples-row" class="crafting-samples-row"></div>
+          <div class="crafting-axis-actions">
+            <button type="button" id="crafting-back-btn" class="modal-btn secondary">Back</button>
+            <button type="button" id="crafting-skip-btn" class="modal-btn secondary">Skip</button>
+            <button type="button" id="crafting-regen-btn" class="modal-btn secondary">Regenerate</button>
+          </div>
+          <div id="crafting-cumulative" class="crafting-cumulative" hidden>
+            <span class="section-label">Voice so far:</span>
+            <span id="crafting-cumulative-text"></span>
+          </div>
+        </div>
+
+        <!-- Final Step: Summary -->
+        <div id="crafting-summary" class="crafting-step" hidden>
+          <h3>Voice Summary</h3>
+          <div id="crafting-traits-list" class="crafting-traits-list"></div>
+          <div class="crafting-summary-desc">
+            <span class="section-label">Final Description</span>
+            <p id="crafting-final-desc"></p>
+          </div>
+          <div class="crafting-save-row">
+            <input type="text" id="crafting-save-name" placeholder="Profile name..." />
+            <button type="button" id="crafting-save-btn" class="modal-btn">Save to Profiles</button>
+          </div>
+        </div>
+
       </div>
       <div class="modal-footer">
-        <span id="designer-status" class="designer-status"></span>
-        <button type="button" id="designer-modal-close" class="modal-btn">Close</button>
+        <span id="crafting-status" class="crafting-status"></span>
+        <span id="crafting-api-counter" class="crafting-api-counter"></span>
+        <button type="button" id="crafting-modal-close" class="modal-btn">Close</button>
       </div>
     </div>
   </div>

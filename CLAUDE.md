@@ -5,7 +5,6 @@
 Web-vox-pro is a meta-TTS platform forked from web-vox. It transforms multiple open-source TTS engines into an intelligent reading engine with:
 - Accurate word/syllable/phoneme timestamps via forced alignment
 - Audio quality analysis and auto-correction
-- Custom voice design (text-prompted, reference audio, multi-sample blending)
 - Document-aware multi-voice synthesis with audio effects
 - OCR/vision support with spatial coordinate mapping
 - SDK packaging for embedding in desktop/web apps
@@ -27,9 +26,8 @@ Web-vox-pro is a meta-TTS platform forked from web-vox. It transforms multiple o
 |---------|------|---------|--------|
 | `alignment_server.py` | 21747 | Forced alignment via Whisper/stable-ts | Phase 1 - BUILT |
 | `quality_server.py` | 21748 | Audio quality analysis (model council) | Phase 2 - BUILT |
-| `voice_designer_server.py` | 21749 | Voice creation via Parler-TTS + blending | Phase 3 - PLANNED |
-| `document_analyzer_server.py` | 21750 | LLM-based text structure detection | Phase 4 - PLANNED |
-| `ocr_server.py` | 21751 | OCR with spatial bounding boxes | Phase 6 - PLANNED |
+| `document_analyzer_server.py` | 21750 | LLM-based text structure detection | Phase 3 - PLANNED |
+| `ocr_server.py` | 21751 | OCR with spatial bounding boxes | Phase 5 - PLANNED |
 
 ### Key Config Files
 - `packages/native-bridge/device_config.json` — CPU/GPU assignment per server
@@ -73,32 +71,32 @@ Web-vox-pro is a meta-TTS platform forked from web-vox. It transforms multiple o
 - Integrated into `handle_synthesize` — runs on raw audio before sonic time-stretch, with graceful fallback
 - **Not yet implemented:** Targeted re-synthesis with crossfade splicing (planned for Phase 2b)
 
-### Phase 3: Voice Designer - COMPLETE
-- `voice_designer_server.py` — Python server (port 21749) with:
-  - Text-prompted voice creation via Parler-TTS (`/design` endpoint)
-  - Speaker embedding extraction via Resemblyzer (with spectral fallback) (`/extract_embedding`)
-  - Multi-sample blending via weighted embedding interpolation (`/blend`)
-  - Voice profile management: save, list, delete (`/save_profile`, `/list_profiles`, `/delete_profile`)
-  - Profiles stored as JSON + PCM files in `voice_profiles/` directory
-- `voice_designer.rs` — Rust HTTP client (same ureq pattern as alignment.rs/quality.rs)
-- Protocol extended: `DesignVoiceRequest`, `BlendVoicesRequest`, `SaveVoiceProfileRequest`, `DeleteVoiceProfileRequest`; `VoiceDesignResult`, `VoiceBlendResult`, `VoiceProfileList`, `VoiceProfileSummary`, `VoiceProfileResult`; corresponding `HostMessage` variants
-- TypeScript types mirrored: `VoiceDesignResult`, `VoiceBlendResult`, `VoiceProfileSummary`, `VoiceProfileResult`, `NativeVoiceDesignResult`, `NativeVoiceBlendResult`, `NativeVoiceProfileSummary`, `NativeVoiceProfileResult`
-- `NativeBridgeEngine` methods: `designVoice()`, `blendVoices()`, `listVoiceProfiles()`, `saveVoiceProfile()`, `deleteVoiceProfile()`
-- Voice designer added to `SERVER_DEFS` in ws_server.rs
-- Handlers: `handle_design_voice`, `handle_blend_voices`, `handle_list_voice_profiles`, `handle_save_voice_profile`, `handle_delete_voice_profile`
-- Demo UI: "Voice Designer" button + modal with description-based generation, blend panel with sample selection/weights, profile management with save/delete
-- **Dependencies needed:** `parler-tts`, `transformers`, `resemblyzer` (optional, has spectral fallback)
-- **Not yet implemented:** Multi-engine preview comparison (planned for Phase 3b)
+### Phase 3: Intelligent Document Reader (3a) - COMPLETE
+- `document_analyzer_server.py` — Python server (port 21750) with:
+  - Auto-detection of plain text, markdown, HTML formats
+  - 20 document element types (heading, paragraph, dialogue, list_item, code_block, etc.)
+  - Default voice scheme mapping (rate, pitch, volume, pause, voice hints) per element type
+  - Position tracking (word offset, count, total, progress) per element
+  - Optional AI enhancement via Ollama (llama3.1:8b)
+  - Endpoints: `/health`, `/voice_scheme`, `/element_types`, `/analyze`, `/analyze_with_scheme`
+- `document_analyzer.rs` — Rust HTTP client (same ureq pattern)
+- Protocol extended: `AnalyzeDocumentRequest`, `DocumentAnalysisResult`, `DocumentElement`, `DocumentVoiceMapping`, `DocumentPosition`, `DocumentStats`
+- `ClientMessage::AnalyzeDocument` + `HostMessage::DocumentAnalysis` variants
+- `ws_server.rs` — `handle_analyze_document()` handler, server added to `SERVER_DEFS`
+- TypeScript types mirrored: `DocumentAnalysisResult`, `DocumentElement`, `DocumentVoiceMapping`, `DocumentPosition`, `DocumentStats`, native variants
+- `NativeBridgeEngine.analyzeDocument()` — full request/response mapping
+- Demo UI:
+  - "Document Mode" toggle on text input card
+  - Format selector (auto/plain/markdown/HTML), Analyze Structure button, sample texts dropdown
+  - Document Structure results section with 3 tabs: Elements, Preview (highlight), Voice Scheme
+  - Stats bar (format, elements, words, chars, analysis time)
+  - Stack status bar shows doc-analyzer dot (4/4 services)
+- Test workbenches: `test-engines/doc-analyzer/index.html`, `test-engines/phase3/index.html` (standalone, removable)
+- **Not yet implemented:** Phase 3b (EPUB/DOCX/PDF), Phase 3c (voice-scheme-driven multi-voice synthesis)
 
-### Phase 4: Intelligent Document Reader - PLANNED
-- Plain text + AI structure detection (4a), HTML/Markdown parsing (4b), EPUB/DOCX/PDF (4c)
-- Voice Schemes mapping document structure to auditory behavior
-- Extended SSML-like markup, stereo positioning, audio effects
-- Full positional awareness (word/sentence/paragraph tracking)
-
-### Phase 5: Smart Loading & Progressive Chunking - PLANNED
-### Phase 6: OCR/Vision & Spatial Coordinates - PLANNED
-### Phase 7: SDK Packaging - PLANNED
+### Phase 4: Smart Loading & Progressive Chunking - PLANNED
+### Phase 5: OCR/Vision & Spatial Coordinates - PLANNED
+### Phase 6: SDK Packaging - PLANNED
 
 ## Development Patterns
 
@@ -106,10 +104,6 @@ Web-vox-pro is a meta-TTS platform forked from web-vox. It transforms multiple o
 - **Rust clients:** All use `ureq` with the same probe/request pattern. See `alignment.rs` as template.
 - **Protocol changes:** Extend types in `crates/web-vox-protocol/src/lib.rs`, mirror in `packages/core/src/types.ts`.
 - **WordBoundary constructors:** All require `confidence: None, phonemes: None, syllables: None` fields.
-
-## Full Plan
-
-See `/Users/yishai/.claude/plans/shiny-foraging-wreath.md` for the complete architecture plan with all phases, file lists, and verification steps.
 
 ## Building
 

@@ -19,4 +19,4 @@ pub mod qwen;
 pub mod qwen_clone;
 pub mod alignment;
 pub mod quality;
-pub mod voice_designer;
+pub mod document_analyzer;

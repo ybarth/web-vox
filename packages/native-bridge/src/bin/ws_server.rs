@@ -31,7 +31,7 @@ use web_vox_native_bridge::tts::kokoro::KokoroSynthesizer;
 use web_vox_native_bridge::tts::qwen::QwenSynthesizer;
 use web_vox_native_bridge::tts::qwen_clone::QwenCloneSynthesizer;
 use web_vox_native_bridge::tts::piper::PiperSynthesizer;
-use web_vox_native_bridge::tts::voice_designer::VoiceDesignerClient;
+use web_vox_native_bridge::tts::document_analyzer::DocumentAnalyzerClient;
 use web_vox_native_bridge::tts::traits::{SynthesisOptions, TtsSynthesizer};
 
 /// A TTS work request sent from a tokio task to the main thread.
@@ -60,7 +60,7 @@ const SERVER_DEFS: &[ServerDef] = &[
     ServerDef { engine: "qwen-clone", name: "Qwen3-TTS Clone", port: 21746, python: "python3.12", script: "qwen_tts_clone_server.py", extra_args: &["--lazy"] },
     ServerDef { engine: "alignment", name: "Forced Alignment", port: 21747, python: "python3.11", script: "alignment_server.py", extra_args: &["--preload"] },
     ServerDef { engine: "quality", name: "Quality Analysis", port: 21748, python: "python3.11", script: "quality_server.py", extra_args: &[] },
-    ServerDef { engine: "voice-designer", name: "Voice Designer", port: 21749, python: "python3.11", script: "voice_designer_server.py", extra_args: &[] },
+    ServerDef { engine: "document-analyzer", name: "Document Analyzer", port: 21750, python: "python3.11", script: "document_analyzer_server.py", extra_args: &[] },
 ];
 
 struct ManagedProcess {
@@ -499,11 +499,7 @@ fn handle_message_sync(msg: &ClientMessage) -> Vec<String> {
         ClientMessage::DeleteVoiceSample(req) => handle_delete_voice_sample(req),
         ClientMessage::ManageServer(req) => handle_manage_server(req),
         ClientMessage::GetServerStats => handle_get_server_stats(),
-        ClientMessage::DesignVoice(req) => handle_design_voice(req),
-        ClientMessage::BlendVoices(req) => handle_blend_voices(req),
-        ClientMessage::ListVoiceProfiles => handle_list_voice_profiles(),
-        ClientMessage::SaveVoiceProfile(req) => handle_save_voice_profile(req),
-        ClientMessage::DeleteVoiceProfile(req) => handle_delete_voice_profile(req),
+        ClientMessage::AnalyzeDocument(req) => handle_analyze_document(req),
     }
 }
 
@@ -1685,265 +1681,84 @@ fn handle_get_server_stats() -> Vec<String> {
     vec![serde_json::to_string(&msg).unwrap()]
 }
 
-// ── Voice designer handlers ──────────────────────────────────────────────
+// ── Document analyzer handler ────────────────────────────────────────
 
-fn handle_design_voice(req: &DesignVoiceRequest) -> Vec<String> {
-    println!("  [voice-designer] Design voice: '{}'", truncate(&req.description, 60));
+fn handle_analyze_document(req: &AnalyzeDocumentRequest) -> Vec<String> {
+    println!(
+        "  [doc-analyzer] Analyze document: {} chars, format={}",
+        req.text.len(),
+        req.format,
+    );
 
-    let client = VoiceDesignerClient::new(None);
+    let client = DocumentAnalyzerClient::new(None);
     if !client.probe() {
-        let msg = HostMessage::VoiceDesignResult(VoiceDesignResult {
+        let msg = HostMessage::DocumentAnalysis(DocumentAnalysisResult {
             id: req.id.clone(),
             success: false,
-            audio_base64: None,
-            sample_rate: None,
-            duration_ms: None,
-            description: None,
-            error: Some("Voice designer server not running. Start it with: python3 voice_designer_server.py".into()),
+            format: None,
+            elements: vec![],
+            stats: None,
+            error: Some("Document analyzer server not running. Start it with: python3 document_analyzer_server.py".into()),
         });
         return vec![serde_json::to_string(&msg).unwrap()];
     }
 
-    match client.design(&req.description, &req.preview_text) {
-        Ok(result) => {
-            let msg = HostMessage::VoiceDesignResult(VoiceDesignResult {
-                id: req.id.clone(),
-                success: result.success,
-                audio_base64: result.audio_base64,
-                sample_rate: result.sample_rate,
-                duration_ms: result.duration_ms,
-                description: result.description,
-                error: result.error,
-            });
-            vec![serde_json::to_string(&msg).unwrap()]
-        }
-        Err(e) => {
-            let msg = HostMessage::VoiceDesignResult(VoiceDesignResult {
-                id: req.id.clone(),
-                success: false,
-                audio_base64: None,
-                sample_rate: None,
-                duration_ms: None,
-                description: None,
-                error: Some(e.to_string()),
-            });
-            vec![serde_json::to_string(&msg).unwrap()]
-        }
-    }
-}
+    let format = if req.format == "auto" { None } else { Some(req.format.as_str()) };
 
-fn handle_blend_voices(req: &BlendVoicesRequest) -> Vec<String> {
-    println!("  [voice-designer] Blend {} voice samples", req.audio_samples_base64.len());
-
-    let client = VoiceDesignerClient::new(None);
-    if !client.probe() {
-        let msg = HostMessage::VoiceBlendResult(VoiceBlendResult {
-            id: req.id.clone(),
-            success: false,
-            embedding: None,
-            dimensions: None,
-            weights_normalized: None,
-            error: Some("Voice designer server not running".into()),
-        });
-        return vec![serde_json::to_string(&msg).unwrap()];
-    }
-
-    // Extract embeddings from each audio sample
-    let mut embeddings: Vec<Vec<f32>> = Vec::new();
-    for (i, audio_b64) in req.audio_samples_base64.iter().enumerate() {
-        let pcm_bytes = match web_vox_protocol::decode_audio_base64(audio_b64) {
-            Ok(b) => b,
-            Err(e) => {
-                let msg = HostMessage::VoiceBlendResult(VoiceBlendResult {
-                    id: req.id.clone(),
-                    success: false,
-                    embedding: None,
-                    dimensions: None,
-                    weights_normalized: None,
-                    error: Some(format!("Failed to decode audio sample {i}: {e}")),
-                });
-                return vec![serde_json::to_string(&msg).unwrap()];
-            }
-        };
-
-        let samples: Vec<f32> = pcm_bytes
-            .chunks_exact(4)
-            .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
-            .collect();
-
-        let sample_rate = req.sample_rates.get(i).copied().unwrap_or(22050);
-
-        match client.extract_embedding(&samples, sample_rate) {
-            Ok(result) if result.success => {
-                if let Some(emb) = result.embedding {
-                    embeddings.push(emb);
-                } else {
-                    let msg = HostMessage::VoiceBlendResult(VoiceBlendResult {
-                        id: req.id.clone(),
-                        success: false,
-                        embedding: None,
-                        dimensions: None,
-                        weights_normalized: None,
-                        error: Some(format!("No embedding returned for sample {i}")),
-                    });
-                    return vec![serde_json::to_string(&msg).unwrap()];
-                }
-            }
-            Ok(result) => {
-                let msg = HostMessage::VoiceBlendResult(VoiceBlendResult {
-                    id: req.id.clone(),
-                    success: false,
-                    embedding: None,
-                    dimensions: None,
-                    weights_normalized: None,
-                    error: Some(format!("Embedding extraction failed for sample {i}: {}", result.error.unwrap_or_default())),
-                });
-                return vec![serde_json::to_string(&msg).unwrap()];
-            }
-            Err(e) => {
-                let msg = HostMessage::VoiceBlendResult(VoiceBlendResult {
-                    id: req.id.clone(),
-                    success: false,
-                    embedding: None,
-                    dimensions: None,
-                    weights_normalized: None,
-                    error: Some(format!("Embedding extraction error for sample {i}: {e}")),
-                });
-                return vec![serde_json::to_string(&msg).unwrap()];
-            }
-        }
-    }
-
-    // Use provided weights or equal weights
-    let weights = if req.weights.is_empty() {
-        vec![1.0; embeddings.len()]
-    } else {
-        req.weights.clone()
-    };
-
-    match client.blend(&embeddings, &weights) {
-        Ok(result) => {
-            let msg = HostMessage::VoiceBlendResult(VoiceBlendResult {
-                id: req.id.clone(),
-                success: result.success,
-                embedding: result.embedding,
-                dimensions: result.dimensions,
-                weights_normalized: result.weights_normalized,
-                error: result.error,
-            });
-            vec![serde_json::to_string(&msg).unwrap()]
-        }
-        Err(e) => {
-            let msg = HostMessage::VoiceBlendResult(VoiceBlendResult {
-                id: req.id.clone(),
-                success: false,
-                embedding: None,
-                dimensions: None,
-                weights_normalized: None,
-                error: Some(e.to_string()),
-            });
-            vec![serde_json::to_string(&msg).unwrap()]
-        }
-    }
-}
-
-fn handle_list_voice_profiles() -> Vec<String> {
-    let client = VoiceDesignerClient::new(None);
-    if !client.probe() {
-        let msg = HostMessage::VoiceProfiles(VoiceProfileList { profiles: vec![] });
-        return vec![serde_json::to_string(&msg).unwrap()];
-    }
-
-    match client.list_profiles() {
-        Ok(profiles) => {
-            let proto_profiles: Vec<VoiceProfileSummary> = profiles
+    match client.analyze(&req.text, format, req.use_ai) {
+        Ok(analysis) => {
+            let elements: Vec<DocumentElement> = analysis
+                .elements
                 .into_iter()
-                .map(|p| VoiceProfileSummary {
-                    id: p.id,
-                    name: p.name,
-                    description: p.description,
-                    sample_rate: p.sample_rate,
-                    has_embedding: p.has_embedding.unwrap_or(false),
-                    has_reference_audio: p.has_reference_audio.unwrap_or(false),
-                    created_at: p.created_at,
+                .map(|e| DocumentElement {
+                    element_type: e.element_type,
+                    text: e.text,
+                    char_offset: e.char_offset,
+                    char_length: e.char_length,
+                    level: e.level,
+                    voice: e.voice.map(|v| DocumentVoiceMapping {
+                        rate: v.rate,
+                        pitch: v.pitch,
+                        volume: v.volume,
+                        pause_before_ms: v.pause_before_ms,
+                        pause_after_ms: v.pause_after_ms,
+                        voice_hint: v.voice_hint,
+                    }),
+                    position: e.position.map(|p| DocumentPosition {
+                        word_offset: p.word_offset,
+                        word_count: p.word_count,
+                        total_words: p.total_words,
+                        progress: p.progress,
+                    }),
                 })
                 .collect();
-            let msg = HostMessage::VoiceProfiles(VoiceProfileList { profiles: proto_profiles });
-            vec![serde_json::to_string(&msg).unwrap()]
-        }
-        Err(e) => {
-            let msg = HostMessage::Error(ErrorMessage {
-                id: None,
-                code: "voice_designer_error".into(),
-                message: e.to_string(),
+
+            let stats = analysis.stats.map(|s| DocumentStats {
+                total_elements: s.total_elements,
+                element_counts: s.element_counts,
+                total_chars: s.total_chars,
+                total_words: s.total_words,
+                analysis_time_ms: s.analysis_time_ms,
+                ai_enhanced: s.ai_enhanced,
             });
-            vec![serde_json::to_string(&msg).unwrap()]
-        }
-    }
-}
 
-fn handle_save_voice_profile(req: &SaveVoiceProfileRequest) -> Vec<String> {
-    let client = VoiceDesignerClient::new(None);
-    if !client.probe() {
-        let msg = HostMessage::VoiceProfileResult(VoiceProfileResult {
-            success: false,
-            profile_id: None,
-            error: Some("Voice designer server not running".into()),
-        });
-        return vec![serde_json::to_string(&msg).unwrap()];
-    }
-
-    match client.save_profile(
-        "", // auto-generate ID
-        &req.name,
-        &req.description,
-        req.embedding.as_deref(),
-        req.reference_audio_base64.as_deref(),
-        req.sample_rate,
-    ) {
-        Ok(result) => {
-            let msg = HostMessage::VoiceProfileResult(VoiceProfileResult {
-                success: result.success,
-                profile_id: result.profile_id,
-                error: result.error,
+            let msg = HostMessage::DocumentAnalysis(DocumentAnalysisResult {
+                id: req.id.clone(),
+                success: analysis.success,
+                format: analysis.format,
+                elements,
+                stats,
+                error: analysis.error,
             });
             vec![serde_json::to_string(&msg).unwrap()]
         }
         Err(e) => {
-            let msg = HostMessage::VoiceProfileResult(VoiceProfileResult {
+            let msg = HostMessage::DocumentAnalysis(DocumentAnalysisResult {
+                id: req.id.clone(),
                 success: false,
-                profile_id: None,
-                error: Some(e.to_string()),
-            });
-            vec![serde_json::to_string(&msg).unwrap()]
-        }
-    }
-}
-
-fn handle_delete_voice_profile(req: &DeleteVoiceProfileRequest) -> Vec<String> {
-    let client = VoiceDesignerClient::new(None);
-    if !client.probe() {
-        let msg = HostMessage::VoiceProfileResult(VoiceProfileResult {
-            success: false,
-            profile_id: Some(req.profile_id.clone()),
-            error: Some("Voice designer server not running".into()),
-        });
-        return vec![serde_json::to_string(&msg).unwrap()];
-    }
-
-    match client.delete_profile(&req.profile_id) {
-        Ok(result) => {
-            let msg = HostMessage::VoiceProfileResult(VoiceProfileResult {
-                success: result.success,
-                profile_id: Some(req.profile_id.clone()),
-                error: result.error,
-            });
-            vec![serde_json::to_string(&msg).unwrap()]
-        }
-        Err(e) => {
-            let msg = HostMessage::VoiceProfileResult(VoiceProfileResult {
-                success: false,
-                profile_id: Some(req.profile_id.clone()),
+                format: None,
+                elements: vec![],
+                stats: None,
                 error: Some(e.to_string()),
             });
             vec![serde_json::to_string(&msg).unwrap()]

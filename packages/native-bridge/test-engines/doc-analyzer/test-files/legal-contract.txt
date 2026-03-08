@@ -1,0 +1,63 @@
+SOFTWARE LICENSE AGREEMENT
+
+This Software License Agreement ("Agreement") is entered into as of March 1, 2026 ("Effective Date") by and between:
+
+LICENSOR: WebVox Technologies, Inc., a Delaware corporation with its principal office at 100 Innovation Drive, San Francisco, CA 94105 ("Licensor")
+
+LICENSEE: The individual or entity identified in the Order Form ("Licensee")
+
+WHEREAS, Licensor has developed certain proprietary software known as "WebVox Pro" (the "Software"); and
+
+WHEREAS, Licensee desires to obtain a license to use the Software subject to the terms and conditions set forth herein;
+
+NOW, THEREFORE, in consideration of the mutual covenants and agreements contained herein, the parties agree as follows:
+
+ARTICLE 1: DEFINITIONS
+
+1.1 "Software" means the WebVox Pro text-to-speech platform, including all associated documentation, libraries, and configuration files.
+
+1.2 "Authorized Users" means employees or contractors of Licensee who have been granted access to the Software.
+
+1.3 "Derivative Works" means any modification, enhancement, or extension of the Software.
+
+ARTICLE 2: GRANT OF LICENSE
+
+2.1 Subject to the terms of this Agreement, Licensor hereby grants to Licensee a non-exclusive, non-transferable, limited license to:
+
+(a) Install and use the Software on up to five (5) machines;
+(b) Make copies of the Software solely for backup purposes;
+(c) Create Derivative Works for internal use only.
+
+2.2 Licensee shall NOT:
+
+(a) Sublicense, sell, or distribute the Software to third parties;
+(b) Use the Software to provide services to third parties without a separate commercial license;
+(c) Reverse engineer, decompile, or disassemble the Software, except as permitted by applicable law;
+(d) Remove or alter any proprietary notices or labels on the Software.
+
+ARTICLE 3: FEES AND PAYMENT
+
+3.1 Licensee shall pay the license fees as set forth in the Order Form.
+
+3.2 All fees are due within thirty (30) days of invoice date.
+
+3.3 Late payments shall accrue interest at the rate of 1.5% per month or the maximum rate permitted by law, whichever is less.
+
+ARTICLE 4: TERM AND TERMINATION
+
+4.1 This Agreement shall commence on the Effective Date and continue for a period of one (1) year, unless earlier terminated.
+
+4.2 Either party may terminate this Agreement:
+
+(a) For cause, upon thirty (30) days written notice if the other party materially breaches this Agreement and fails to cure such breach within the notice period;
+(b) For convenience, upon ninety (90) days written notice.
+
+4.3 Upon termination, Licensee shall immediately cease all use of the Software and destroy all copies in its possession.
+
+ARTICLE 5: LIMITATION OF LIABILITY
+
+5.1 IN NO EVENT SHALL EITHER PARTY BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES.
+
+5.2 LICENSOR'S TOTAL AGGREGATE LIABILITY SHALL NOT EXCEED THE FEES PAID BY LICENSEE IN THE TWELVE (12) MONTHS PRECEDING THE CLAIM.
+
+IN WITNESS WHEREOF, the parties have executed this Agreement as of the Effective Date.

@@ -1,0 +1,1531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Document Analyzer — Test Workbench</title>
+  <style>
+    :root {
+      --bg: #1a1a2e;
+      --surface: #16213e;
+      --surface2: #0f3460;
+      --accent: #e94560;
+      --accent2: #0ea5e9;
+      --text: #e0e0e0;
+      --text2: #a0a0b0;
+      --success: #22c55e;
+      --warn: #f59e0b;
+      --error: #ef4444;
+      --mono: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      --radius: 8px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--sans); background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    .app { max-width: 1400px; margin: 0 auto; padding: 20px; }
+    header { text-align: center; margin-bottom: 24px; }
+    header h1 { font-size: 1.5rem; color: var(--accent); }
+    header p { color: var(--text2); font-size: 0.85rem; margin-top: 4px; }
+
+    .status-bar { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 12px 0; }
+    .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .status-dot.up { background: var(--success); }
+    .status-dot.down { background: var(--error); }
+    .status-dot.checking { background: var(--warn); animation: pulse 1s infinite; }
+    @keyframes pulse { 50% { opacity: 0.4; } }
+    .status-label { font-size: 0.8rem; color: var(--text2); }
+
+    .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+    .panel { background: var(--surface); border-radius: var(--radius); padding: 16px; }
+    .panel h2 { font-size: 1rem; margin-bottom: 12px; color: var(--accent2); }
+    .panel h3 { font-size: 0.85rem; margin: 12px 0 6px; color: var(--text2); }
+
+    textarea { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--surface2); border-radius: 6px; padding: 10px; font-family: var(--mono); font-size: 0.85rem; resize: vertical; }
+    select, button, input[type="text"] { background: var(--surface2); color: var(--text); border: 1px solid #2a3a5e; border-radius: 6px; padding: 6px 12px; font-size: 0.8rem; cursor: pointer; }
+    button:hover { background: var(--accent); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button:disabled:hover { background: var(--surface2); }
+
+    .controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
+    .controls label { font-size: 0.8rem; color: var(--text2); }
+
+    .sample-btns { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+    .sample-btn { font-size: 0.75rem; padding: 4px 10px; background: var(--bg); }
+    .sample-btn:hover { background: var(--accent2); }
+
+    .import-section { margin: 10px 0; }
+    .import-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .import-btn { font-size: 0.78rem; padding: 5px 12px; background: var(--surface2); border: 1px dashed #3a5a8e; }
+    .import-btn:hover { background: var(--accent); border-style: solid; }
+    .file-input-hidden { display: none; }
+    .test-files-dropdown { position: relative; display: inline-block; }
+    .test-files-menu { position: absolute; top: 100%; left: 0; background: var(--surface); border: 1px solid var(--surface2); border-radius: 6px; padding: 4px 0; z-index: 100; min-width: 220px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); display: none; }
+    .test-files-menu.open { display: block; }
+    .test-file-item { padding: 6px 14px; font-size: 0.78rem; cursor: pointer; display: flex; justify-content: space-between; gap: 12px; }
+    .test-file-item:hover { background: var(--accent2); color: #fff; }
+    .test-file-ext { color: var(--text2); font-size: 0.7rem; }
+    .test-file-item:hover .test-file-ext { color: rgba(255,255,255,0.7); }
+    .import-info { font-size: 0.72rem; color: var(--text2); margin-top: 4px; }
+
+    /* Voice Scheme Editor */
+    .scheme-editor { margin-top: 16px; }
+    .scheme-toolbar { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+    .scheme-toolbar select { min-width: 140px; }
+    .scheme-toolbar .scheme-name-input { min-width: 140px; padding: 5px 10px; background: var(--bg); color: var(--text); border: 1px solid var(--surface2); border-radius: 6px; font-size: 0.8rem; }
+    .scheme-table-wrap { max-height: 500px; overflow-y: auto; }
+    .scheme-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+    .scheme-table th { text-align: left; padding: 5px 6px; font-size: 0.7rem; color: var(--text2); text-transform: uppercase; letter-spacing: 0.3px; border-bottom: 1px solid var(--surface2); position: sticky; top: 0; background: var(--surface); z-index: 1; }
+    .scheme-table td { padding: 4px 6px; border-bottom: 1px solid #ffffff08; vertical-align: middle; }
+    .scheme-table tr:hover { background: rgba(255,255,255,0.03); }
+    .scheme-type-cell { display: flex; align-items: center; gap: 6px; }
+    .scheme-type-dot { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+    .scheme-input { width: 60px; padding: 3px 6px; background: var(--bg); color: var(--text); border: 1px solid var(--surface2); border-radius: 4px; font-size: 0.78rem; text-align: center; }
+    .scheme-input:focus { border-color: var(--accent2); outline: none; }
+    .scheme-input.hint { width: 90px; text-align: left; }
+    .scheme-slider { width: 60px; height: 4px; accent-color: var(--accent2); vertical-align: middle; }
+    .scheme-val { font-size: 0.7rem; color: var(--text2); width: 32px; display: inline-block; text-align: right; }
+    .scheme-preset-btns { display: flex; gap: 4px; flex-wrap: wrap; margin: 8px 0; }
+    .scheme-preset-btn { font-size: 0.72rem; padding: 3px 8px; background: var(--bg); border: 1px solid var(--surface2); }
+    .scheme-preset-btn:hover { background: var(--accent2); border-color: var(--accent2); }
+    .scheme-preset-btn.active { background: var(--accent2); border-color: var(--accent2); color: #fff; }
+    .scheme-saved-list { margin-top: 8px; }
+    .scheme-saved-item { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px; font-size: 0.75rem; border-bottom: 1px solid #ffffff08; }
+    .scheme-saved-item:hover { background: rgba(255,255,255,0.03); }
+    .scheme-saved-name { cursor: pointer; color: var(--accent2); }
+    .scheme-saved-name:hover { text-decoration: underline; }
+    .scheme-saved-actions { display: flex; gap: 4px; }
+    .scheme-saved-actions button { font-size: 0.7rem; padding: 2px 6px; background: var(--bg); }
+    .scheme-dirty-indicator { color: var(--warn); font-size: 0.72rem; margin-left: 8px; }
+
+    /* AI Prompt Builder */
+    .ai-prompt-section { margin: 12px 0; }
+    .ai-prompt-row { display: flex; gap: 8px; align-items: stretch; }
+    .ai-prompt-input { flex: 1; min-height: 42px; max-height: 120px; padding: 10px 14px; background: var(--bg); color: var(--text); border: 1px solid var(--surface2); border-radius: 8px; font-family: var(--sans); font-size: 0.85rem; resize: vertical; line-height: 1.4; }
+    .ai-prompt-input::placeholder { color: var(--text2); }
+    .ai-prompt-input:focus { border-color: var(--accent2); outline: none; box-shadow: 0 0 0 2px rgba(14,165,233,0.15); }
+    .ai-prompt-send { padding: 10px 20px; background: linear-gradient(135deg, #7c3aed, #6366f1); color: #fff; border: none; border-radius: 8px; font-weight: 600; font-size: 0.85rem; cursor: pointer; white-space: nowrap; transition: opacity 0.15s; }
+    .ai-prompt-send:hover { opacity: 0.9; }
+    .ai-prompt-send:disabled { opacity: 0.4; cursor: not-allowed; }
+    .ai-prompt-send:disabled:hover { opacity: 0.4; }
+    .ai-prompt-examples { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+    .ai-prompt-example { font-size: 0.72rem; padding: 3px 10px; background: var(--bg); border: 1px solid var(--surface2); border-radius: 12px; cursor: pointer; color: var(--text2); transition: all 0.15s; }
+    .ai-prompt-example:hover { background: var(--surface2); color: var(--text); border-color: var(--accent2); }
+    .ai-prompt-status { font-size: 0.75rem; color: var(--text2); margin-top: 6px; min-height: 1.2em; }
+    .ai-prompt-status.thinking { color: var(--accent2); }
+    .ai-prompt-status.error { color: var(--error); }
+    .ai-prompt-status.success { color: var(--success); }
+    .ai-prompt-history { margin-top: 8px; max-height: 120px; overflow-y: auto; }
+    .ai-prompt-history-item { font-size: 0.72rem; padding: 4px 8px; color: var(--text2); border-bottom: 1px solid #ffffff08; display: flex; justify-content: space-between; align-items: center; }
+    .ai-prompt-history-item:hover { background: rgba(255,255,255,0.02); }
+    .ai-prompt-history-prompt { cursor: pointer; flex: 1; }
+    .ai-prompt-history-prompt:hover { color: var(--accent2); }
+    .ai-prompt-label { font-size: 0.78rem; color: var(--accent2); font-weight: 600; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+    .ai-prompt-label .ai-badge { background: linear-gradient(135deg, #7c3aed, #6366f1); color: #fff; font-size: 0.65rem; padding: 1px 6px; border-radius: 4px; font-weight: 700; letter-spacing: 0.5px; }
+
+    /* Element results */
+    .elements-list { max-height: 600px; overflow-y: auto; }
+    .element-item { background: var(--bg); border-radius: 6px; padding: 10px; margin-bottom: 6px; border-left: 3px solid var(--surface2); }
+    .element-item .el-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+    .element-item .el-type { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; padding: 2px 8px; border-radius: 4px; }
+    .element-item .el-text { font-size: 0.85rem; color: var(--text); margin-top: 4px; }
+    .element-item .el-meta { font-size: 0.7rem; color: var(--text2); margin-top: 4px; }
+    .element-item .el-voice { font-size: 0.7rem; color: var(--accent2); margin-top: 2px; }
+
+    /* Type colors */
+    .el-type-heading { background: #7c3aed33; color: #a78bfa; }
+    .el-type-paragraph { background: #3b82f633; color: #93c5fd; }
+    .el-type-dialogue { background: #f59e0b33; color: #fbbf24; }
+    .el-type-dialogue_attr { background: #f59e0b22; color: #d4a017; }
+    .el-type-list_item { background: #22c55e33; color: #86efac; }
+    .el-type-blockquote { background: #6366f133; color: #a5b4fc; }
+    .el-type-code_block { background: #71717a33; color: #a1a1aa; }
+    .el-type-separator { background: #ef444433; color: #fca5a5; }
+    .el-type-emphasis { background: #ec489933; color: #f9a8d4; }
+    .el-type-strong { background: #f9731633; color: #fdba74; }
+    .el-type-title { background: #e9456033; color: #e94560; }
+    .el-type-subtitle { background: #e9456022; color: #c73a52; }
+    .el-type-footnote { background: #71717a22; color: #a1a1aa; }
+    .el-type-caption { background: #0ea5e922; color: #67d5f0; }
+    .el-type-link { background: #0ea5e933; color: #38bdf8; }
+    .el-type-table_header { background: #8b5cf633; color: #c4b5fd; }
+    .el-type-table_cell { background: #8b5cf622; color: #a78bfa; }
+    .el-type-metadata { background: #71717a22; color: #a1a1aa; }
+
+    .el-border-heading { border-left-color: #a78bfa; }
+    .el-border-paragraph { border-left-color: #93c5fd; }
+    .el-border-dialogue { border-left-color: #fbbf24; }
+    .el-border-dialogue_attr { border-left-color: #d4a017; }
+    .el-border-list_item { border-left-color: #86efac; }
+    .el-border-blockquote { border-left-color: #a5b4fc; }
+    .el-border-code_block { border-left-color: #a1a1aa; }
+    .el-border-separator { border-left-color: #fca5a5; }
+    .el-border-emphasis { border-left-color: #f9a8d4; }
+    .el-border-strong { border-left-color: #fdba74; }
+    .el-border-title { border-left-color: #e94560; }
+    .el-border-subtitle { border-left-color: #c73a52; }
+
+    /* Stats bar */
+    .stats-bar { display: flex; gap: 12px; flex-wrap: wrap; margin: 10px 0; }
+    .stat-chip { background: var(--bg); padding: 4px 10px; border-radius: 4px; font-size: 0.75rem; }
+    .stat-chip .stat-val { color: var(--accent2); font-weight: 700; }
+
+    /* Highlight view */
+    .highlight-view { background: var(--bg); border-radius: 6px; padding: 12px; font-size: 0.9rem; line-height: 1.7; max-height: 400px; overflow-y: auto; white-space: pre-wrap; }
+    .highlight-view .hl-heading { color: #a78bfa; font-weight: 700; font-size: 1.1em; }
+    .highlight-view .hl-dialogue { color: #fbbf24; }
+    .highlight-view .hl-dialogue_attr { color: #d4a017; font-style: italic; }
+    .highlight-view .hl-list_item { color: #86efac; }
+    .highlight-view .hl-blockquote { color: #a5b4fc; font-style: italic; }
+    .highlight-view .hl-code_block { color: #a1a1aa; font-family: var(--mono); background: #1e1e2e; padding: 2px 4px; border-radius: 3px; }
+    .highlight-view .hl-separator { color: #fca5a5; }
+    .highlight-view .hl-emphasis { font-style: italic; }
+    .highlight-view .hl-strong { font-weight: 700; }
+    .highlight-view .hl-title { color: #e94560; font-weight: 700; font-size: 1.2em; }
+    .highlight-view .hl-paragraph { color: var(--text); }
+
+    /* JSON view */
+    .json-view { background: var(--bg); border-radius: 6px; padding: 10px; font-family: var(--mono); font-size: 0.75rem; max-height: 400px; overflow: auto; white-space: pre-wrap; color: var(--text2); }
+
+    .tabs { display: flex; gap: 2px; margin-bottom: 10px; }
+    .tab { padding: 6px 14px; font-size: 0.8rem; border-radius: 6px 6px 0 0; background: var(--bg); color: var(--text2); cursor: pointer; border: none; }
+    .tab.active { background: var(--surface2); color: var(--accent2); }
+
+    .log { background: var(--bg); border-radius: 6px; padding: 8px; font-family: var(--mono); font-size: 0.7rem; max-height: 150px; overflow-y: auto; color: var(--text2); margin-top: 12px; }
+    .log-entry { padding: 2px 0; border-bottom: 1px solid #ffffff08; }
+    .log-entry.error { color: var(--error); }
+    .log-entry.success { color: var(--success); }
+
+    /* TEST BANNER — easy to find and remove */
+    .test-banner { background: #f59e0b22; border: 1px solid #f59e0b44; border-radius: var(--radius); padding: 8px 16px; text-align: center; font-size: 0.75rem; color: var(--warn); margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- TEST BANNER — remove when done -->
+    <div class="test-banner">TEST WORKBENCH — Phase 3: Document Analyzer — Port 5200 — Remove when testing complete</div>
+
+    <header>
+      <h1>Document Analyzer — Test Workbench</h1>
+      <p>Parse text into structured elements with voice scheme mappings</p>
+    </header>
+
+    <div class="status-bar">
+      <span class="status-dot checking" id="status-dot"></span>
+      <span class="status-label" id="status-label">Checking server...</span>
+    </div>
+
+    <div class="layout">
+      <!-- Left: Input -->
+      <div class="panel">
+        <h2>Input</h2>
+
+        <div class="controls">
+          <label>Format:</label>
+          <select id="format-select">
+            <option value="auto">Auto-detect</option>
+            <option value="plain">Plain Text</option>
+            <option value="markdown">Markdown</option>
+            <option value="html">HTML</option>
+          </select>
+          <label><input type="checkbox" id="ai-check" /> AI Enhancement</label>
+          <button id="analyze-btn" disabled>Analyze</button>
+          <button id="clear-btn">Clear</button>
+        </div>
+
+        <textarea id="text-input" rows="16" placeholder="Paste or type text to analyze..."></textarea>
+
+        <div class="import-section">
+          <h3>Import File</h3>
+          <div class="import-row">
+            <input type="file" id="file-input" class="file-input-hidden" accept=".txt,.md,.html,.htm,.json,.xml,.csv,.rst,.adoc" />
+            <button id="import-file-btn" class="import-btn">Import File...</button>
+            <div class="test-files-dropdown">
+              <button id="test-files-btn" class="import-btn">Test Files &#9662;</button>
+              <div id="test-files-menu" class="test-files-menu"></div>
+            </div>
+          </div>
+          <div id="import-info" class="import-info"></div>
+        </div>
+
+        <h3>Sample Texts</h3>
+        <div class="sample-btns">
+          <button class="sample-btn" data-sample="novel">Novel Excerpt</button>
+          <button class="sample-btn" data-sample="markdown">Markdown Doc</button>
+          <button class="sample-btn" data-sample="html">HTML Page</button>
+          <button class="sample-btn" data-sample="dialogue">Dialogue Heavy</button>
+          <button class="sample-btn" data-sample="technical">Technical Doc</button>
+          <button class="sample-btn" data-sample="mixed">Mixed Content</button>
+        </div>
+
+        <div class="log" id="log"></div>
+      </div>
+
+      <!-- Right: Results -->
+      <div class="panel">
+        <h2>Results</h2>
+
+        <div id="stats-bar" class="stats-bar"></div>
+
+        <div class="tabs">
+          <button class="tab active" data-tab="elements">Elements</button>
+          <button class="tab" data-tab="highlight">Highlight</button>
+          <button class="tab" data-tab="json">JSON</button>
+          <button class="tab" data-tab="voice">Voice Scheme</button>
+        </div>
+
+        <!-- Elements tab -->
+        <div id="tab-elements" class="elements-list"></div>
+
+        <!-- Highlight tab -->
+        <div id="tab-highlight" class="highlight-view" hidden></div>
+
+        <!-- JSON tab -->
+        <div id="tab-json" class="json-view" hidden>No results yet.</div>
+
+        <!-- Voice scheme tab -->
+        <div id="tab-voice" hidden>
+          <div class="elements-list" id="voice-elements"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Voice Scheme Editor — full width below -->
+    <div class="panel scheme-editor">
+      <h2>Voice Scheme Editor</h2>
+
+      <div class="scheme-toolbar">
+        <select id="scheme-select">
+          <option value="__default">Default Scheme</option>
+        </select>
+        <input type="text" id="scheme-name-input" class="scheme-name-input" placeholder="Scheme name..." />
+        <button id="scheme-save-btn">Save</button>
+        <button id="scheme-save-as-btn">Save As New</button>
+        <button id="scheme-reset-btn">Reset to Default</button>
+        <button id="scheme-export-btn">Export JSON</button>
+        <button id="scheme-import-btn">Import JSON</button>
+        <input type="file" id="scheme-import-file" class="file-input-hidden" accept=".json" />
+        <button id="scheme-apply-btn" style="background:var(--accent);">Re-Analyze with Scheme</button>
+        <span id="scheme-dirty" class="scheme-dirty-indicator" hidden>unsaved changes</span>
+      </div>
+
+      <div class="scheme-preset-btns">
+        <span style="font-size:0.72rem;color:var(--text2);margin-right:4px;">Presets:</span>
+        <button class="scheme-preset-btn" data-preset="default">Default</button>
+        <button class="scheme-preset-btn" data-preset="audiobook">Audiobook</button>
+        <button class="scheme-preset-btn" data-preset="podcast">Podcast</button>
+        <button class="scheme-preset-btn" data-preset="accessibility">Accessibility</button>
+        <button class="scheme-preset-btn" data-preset="dramatic">Dramatic</button>
+        <button class="scheme-preset-btn" data-preset="flat">Flat / Monotone</button>
+      </div>
+
+      <!-- AI Prompt Builder -->
+      <div class="ai-prompt-section">
+        <div class="ai-prompt-label"><span class="ai-badge">AI</span> Describe your voice scheme in plain English</div>
+        <div class="ai-prompt-row">
+          <textarea class="ai-prompt-input" id="ai-prompt-input" placeholder="e.g. &quot;Make headings slow and dramatic, dialogue fast and expressive, whisper the footnotes, and add long pauses between sections&quot;" rows="2"></textarea>
+          <button class="ai-prompt-send" id="ai-prompt-send">Generate Scheme</button>
+        </div>
+        <div class="ai-prompt-examples">
+          <span class="ai-prompt-example" data-prompt="Audiobook style: dramatic headings, expressive dialogue with character voices, contemplative blockquotes, and long scene-break pauses">Audiobook</span>
+          <span class="ai-prompt-example" data-prompt="Podcast style: upbeat and conversational, fast-paced dialogue, keep everything at a natural speaking rate">Podcast</span>
+          <span class="ai-prompt-example" data-prompt="Accessibility: slow everything down, increase pauses between all elements, make headings very clear and loud">Accessibility</span>
+          <span class="ai-prompt-example" data-prompt="Bedtime story: gentle and slow, soft volume, whispered dialogue attributions, very long pauses at separators">Bedtime story</span>
+          <span class="ai-prompt-example" data-prompt="Technical lecture: monotone code blocks, authoritative headings, moderate pace overall, short pauses between list items">Technical lecture</span>
+          <span class="ai-prompt-example" data-prompt="Make dialogue louder and 10% faster, reduce heading pauses to 300ms, and set all code blocks to monotone with 0.8 rate">Quick tweaks</span>
+        </div>
+        <div class="ai-prompt-status" id="ai-prompt-status"></div>
+        <div class="ai-prompt-history" id="ai-prompt-history"></div>
+      </div>
+
+      <div class="scheme-table-wrap">
+        <table class="scheme-table">
+          <thead>
+            <tr>
+              <th>Element Type</th>
+              <th>Rate</th>
+              <th></th>
+              <th>Pitch</th>
+              <th></th>
+              <th>Volume</th>
+              <th></th>
+              <th>Pause Before</th>
+              <th>Pause After</th>
+              <th>Voice Hint</th>
+            </tr>
+          </thead>
+          <tbody id="scheme-table-body"></tbody>
+        </table>
+      </div>
+
+      <h3>Saved Schemes</h3>
+      <div id="scheme-saved-list" class="scheme-saved-list">
+        <div style="color:var(--text2);font-size:0.75rem;padding:8px 0;">No saved schemes yet. Edit values above and click Save.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+// ── TEST WORKBENCH SCRIPT — Remove this entire <script> block when done ──
+
+const SERVER = 'http://127.0.0.1:21750';
+
+const textInput = document.getElementById('text-input');
+const formatSelect = document.getElementById('format-select');
+const aiCheck = document.getElementById('ai-check');
+const analyzeBtn = document.getElementById('analyze-btn');
+const clearBtn = document.getElementById('clear-btn');
+const statusDot = document.getElementById('status-dot');
+const statusLabel = document.getElementById('status-label');
+const statsBar = document.getElementById('stats-bar');
+const logEl = document.getElementById('log');
+
+const tabElements = document.getElementById('tab-elements');
+const tabHighlight = document.getElementById('tab-highlight');
+const tabJson = document.getElementById('tab-json');
+const tabVoice = document.getElementById('tab-voice');
+const voiceElements = document.getElementById('voice-elements');
+
+let lastResult = null;
+
+// ── Logging ──
+function log(msg, level = '') {
+  const entry = document.createElement('div');
+  entry.className = `log-entry ${level}`;
+  entry.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  logEl.prepend(entry);
+  while (logEl.children.length > 50) logEl.lastChild.remove();
+}
+
+// ── Server health check ──
+async function checkHealth() {
+  try {
+    const resp = await fetch(`${SERVER}/health`);
+    if (!resp.ok) throw new Error('not ok');
+    const data = await resp.json();
+    statusDot.className = 'status-dot up';
+    statusLabel.textContent = `Server online — provider: ${data.provider || 'none'}`;
+    analyzeBtn.disabled = false;
+    log(`Server healthy: provider=${data.provider}`, 'success');
+  } catch {
+    statusDot.className = 'status-dot down';
+    statusLabel.textContent = 'Server offline';
+    analyzeBtn.disabled = true;
+    log('Server not reachable', 'error');
+  }
+}
+
+// ── Analyze ──
+async function analyze() {
+  const text = textInput.value.trim();
+  if (!text) { log('No text to analyze', 'error'); return; }
+
+  analyzeBtn.disabled = true;
+  analyzeBtn.textContent = 'Analyzing...';
+  log(`Analyzing ${text.length} chars...`);
+
+  try {
+    const resp = await fetch(`${SERVER}/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text,
+        format: formatSelect.value,
+        use_ai: aiCheck.checked,
+      }),
+    });
+    const data = await resp.json();
+
+    if (!data.success) {
+      log(`Analysis failed: ${data.error}`, 'error');
+      return;
+    }
+
+    lastResult = data;
+    log(`Found ${data.elements.length} elements in ${data.stats?.analysis_time_ms?.toFixed(1)}ms (format: ${data.format})`, 'success');
+
+    renderStats(data.stats);
+    renderElements(data.elements);
+    renderHighlight(data.elements, text);
+    renderJson(data);
+    renderVoiceScheme(data.elements);
+
+  } catch (err) {
+    log(`Request error: ${err}`, 'error');
+  } finally {
+    analyzeBtn.disabled = false;
+    analyzeBtn.textContent = 'Analyze';
+  }
+}
+
+// ── Render stats ──
+function renderStats(stats) {
+  if (!stats) { statsBar.innerHTML = ''; return; }
+  const chips = [
+    `<span class="stat-val">${stats.total_elements}</span> elements`,
+    `<span class="stat-val">${stats.total_words}</span> words`,
+    `<span class="stat-val">${stats.total_chars}</span> chars`,
+    `<span class="stat-val">${stats.analysis_time_ms?.toFixed(1)}ms</span>`,
+  ];
+  if (stats.ai_enhanced) chips.push(`<span class="stat-val">AI</span> enhanced`);
+
+  // Type breakdown
+  const counts = stats.element_counts || {};
+  for (const [type, count] of Object.entries(counts)) {
+    chips.push(`<span class="stat-val">${count}</span> ${type}`);
+  }
+
+  statsBar.innerHTML = chips.map(c => `<span class="stat-chip">${c}</span>`).join('');
+}
+
+// ── Render elements list ──
+function renderElements(elements) {
+  if (!elements.length) {
+    tabElements.innerHTML = '<div style="color:var(--text2);padding:20px;text-align:center;">No elements found</div>';
+    return;
+  }
+  tabElements.innerHTML = elements.map((el, i) => {
+    const typeClass = `el-type-${el.type}`;
+    const borderClass = `el-border-${el.type}`;
+    const textPreview = el.text.length > 200 ? el.text.slice(0, 200) + '...' : el.text;
+    const voice = el.voice;
+    const pos = el.position;
+
+    let meta = `offset: ${el.char_offset}, len: ${el.char_length}`;
+    if (el.level > 0) meta += `, level: ${el.level}`;
+    if (pos) meta += ` | word ${pos.word_offset}–${pos.word_offset + pos.word_count} of ${pos.total_words} (${(pos.progress * 100).toFixed(1)}%)`;
+
+    let voiceStr = '';
+    if (voice) {
+      const parts = [];
+      if (voice.rate !== 1.0) parts.push(`rate: ${voice.rate}`);
+      if (voice.pitch !== 1.0) parts.push(`pitch: ${voice.pitch}`);
+      if (voice.volume !== 1.0) parts.push(`vol: ${voice.volume}`);
+      if (voice.pause_before_ms) parts.push(`pause-before: ${voice.pause_before_ms}ms`);
+      if (voice.pause_after_ms) parts.push(`pause-after: ${voice.pause_after_ms}ms`);
+      if (voice.voice_hint) parts.push(`hint: ${voice.voice_hint}`);
+      if (parts.length) voiceStr = parts.join(' | ');
+    }
+
+    return `<div class="element-item ${borderClass}">
+      <div class="el-header">
+        <span class="el-type ${typeClass}">${el.type}${el.level > 0 ? ` (${el.level})` : ''}</span>
+        <span style="font-size:0.7rem;color:var(--text2);">#${i}</span>
+      </div>
+      <div class="el-text">${escHtml(textPreview)}</div>
+      <div class="el-meta">${meta}</div>
+      ${voiceStr ? `<div class="el-voice">${voiceStr}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+// ── Render highlight view ──
+function renderHighlight(elements, originalText) {
+  if (!elements.length) {
+    tabHighlight.innerHTML = '<span style="color:var(--text2);">No elements to highlight</span>';
+    return;
+  }
+
+  // Build highlighted text from elements
+  const spans = elements.map(el => {
+    const cls = `hl-${el.type}`;
+    const text = escHtml(el.text);
+    const pause = el.voice?.pause_after_ms > 300 ? '\n\n' : el.voice?.pause_after_ms > 100 ? '\n' : ' ';
+    return `<span class="${cls}" title="${el.type}">${text}</span>${pause}`;
+  });
+  tabHighlight.innerHTML = spans.join('');
+}
+
+// ── Render JSON ──
+function renderJson(data) {
+  tabJson.textContent = JSON.stringify(data, null, 2);
+}
+
+// ── Render voice scheme view ──
+function renderVoiceScheme(elements) {
+  if (!elements.length) {
+    voiceElements.innerHTML = '<div style="color:var(--text2);padding:20px;text-align:center;">No elements</div>';
+    return;
+  }
+  voiceElements.innerHTML = elements.map((el, i) => {
+    const v = el.voice || {};
+    const bars = [
+      { label: 'Rate', val: v.rate || 1.0, min: 0.5, max: 1.5 },
+      { label: 'Pitch', val: v.pitch || 1.0, min: 0.5, max: 1.5 },
+      { label: 'Volume', val: v.volume || 1.0, min: 0, max: 1.2 },
+    ];
+    const barsHtml = bars.map(b => {
+      const pct = Math.min(100, Math.max(0, ((b.val - b.min) / (b.max - b.min)) * 100));
+      return `<span style="font-size:0.7rem;color:var(--text2);">${b.label}: ${b.val.toFixed(2)}</span>
+        <div style="background:#1a1a2e;height:6px;border-radius:3px;width:80px;display:inline-block;margin:0 4px;">
+          <div style="background:var(--accent2);height:100%;width:${pct}%;border-radius:3px;"></div>
+        </div>`;
+    }).join(' ');
+
+    const pauseHtml = `pause: ${v.pause_before_ms || 0}ms / ${v.pause_after_ms || 0}ms`;
+    const hintHtml = v.voice_hint ? ` | hint: <strong>${v.voice_hint}</strong>` : '';
+
+    return `<div class="element-item el-border-${el.type}" style="padding:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span class="el-type el-type-${el.type}">${el.type}</span>
+        <span style="font-size:0.7rem;color:var(--text2);">${escHtml(el.text.slice(0, 40))}${el.text.length > 40 ? '...' : ''}</span>
+      </div>
+      <div style="margin-top:6px;">${barsHtml}</div>
+      <div style="font-size:0.7rem;color:var(--text2);margin-top:4px;">${pauseHtml}${hintHtml}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── Tab switching ──
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    const target = tab.dataset.tab;
+    tabElements.hidden = target !== 'elements';
+    tabHighlight.hidden = target !== 'highlight';
+    tabJson.hidden = target !== 'json';
+    tabVoice.hidden = target !== 'voice';
+  });
+});
+
+// ── Sample texts ──
+const SAMPLES = {
+  novel: `Chapter 1: The Beginning
+
+The rain hammered against the windows of the old Victorian house. Sarah pressed her face against the cold glass, watching the drops race each other down the pane.
+
+"Do you think it will ever stop?" she asked, not turning around.
+
+Marcus looked up from his book. "It always does," he said quietly. "Eventually."
+
+She turned to face him, her eyes reflecting the grey light. "That's not very comforting."
+
+"It wasn't meant to be," he replied, turning a page. "It was meant to be true."
+
+* * *
+
+The next morning brought sunshine, as if the storm had never happened. Birds sang in the garden, and the wet grass sparkled like scattered diamonds.
+
+Sarah found Marcus already in the kitchen, making coffee. The rich aroma filled the room.
+
+"See?" he said, smiling. "It stopped."`,
+
+  markdown: `# Web-Vox Pro Architecture
+
+## Overview
+
+Web-vox-pro is a **meta-TTS platform** that transforms multiple open-source TTS engines into an intelligent reading engine.
+
+### Key Features
+
+- Accurate word/syllable/phoneme timestamps via *forced alignment*
+- Audio quality analysis and auto-correction
+- Document-aware multi-voice synthesis
+
+## Architecture
+
+The system uses a layered approach:
+
+1. **Rust WebSocket server** — central hub
+2. **Python HTTP servers** — neural engine backends
+3. **TypeScript core library** — client SDK
+
+> The architecture is designed for flexibility: each component can run locally, in the cloud, or in a hybrid configuration.
+
+### Code Example
+
+\`\`\`rust
+fn handle_synthesize(req: &SynthesizeRequest) -> Vec<String> {
+    let engine = select_engine(&req.voice_id);
+    engine.synthesize(&req.text)
+}
+\`\`\`
+
+Note: Use \`cargo check\` to verify the build. See the [documentation](https://docs.example.com) for details.
+
+---
+
+## Next Steps
+
+Phase 3 focuses on the **Intelligent Document Reader** — parsing text into structured elements for multi-voice synthesis.`,
+
+  html: `<html>
+<body>
+  <h1>Annual Report 2025</h1>
+  <h2>Executive Summary</h2>
+  <p>Our company achieved <strong>record growth</strong> in 2025, with revenue increasing by 40% year-over-year.</p>
+  <p>Key highlights include the launch of our <em>new product line</em> and expansion into three new markets.</p>
+  <h2>Financial Overview</h2>
+  <table>
+    <tr><th>Metric</th><th>2024</th><th>2025</th></tr>
+    <tr><td>Revenue</td><td>$50M</td><td>$70M</td></tr>
+    <tr><td>Profit</td><td>$8M</td><td>$15M</td></tr>
+  </table>
+  <h3>Regional Performance</h3>
+  <ul>
+    <li>North America: +35%</li>
+    <li>Europe: +45%</li>
+    <li>Asia-Pacific: +55%</li>
+  </ul>
+  <blockquote>We are confident in our trajectory for continued growth in 2026.</blockquote>
+  <hr>
+  <p><em>This report contains forward-looking statements.</em></p>
+</body>
+</html>`,
+
+  dialogue: `"I can't believe you did that," Maria said, shaking her head.
+
+Tom shrugged. "What choice did I have?"
+
+"You always have a choice," she replied sharply. "That's what makes us human."
+
+He was quiet for a moment, staring at the floor. When he finally looked up, his eyes were red.
+
+"You're right," he whispered. "I'm sorry."
+
+Maria softened. She reached out and took his hand. "I know you are," she said gently. "But sorry doesn't fix everything."
+
+"Then what does?" he asked.
+
+She smiled sadly. "Time," she murmured. "Time and effort."
+
+"I don't think he meant any harm," interrupted Clara from the doorway. "He just didn't think it through."
+
+"Nobody asked you, Clara," Maria snapped, then immediately regretted it. "I'm sorry. That was unfair."
+
+Clara shrugged. "It's fine. Tensions are high. I get it."`,
+
+  technical: `SYSTEM REQUIREMENTS AND CONFIGURATION
+
+Prerequisites
+
+Before installation, ensure the following dependencies are met:
+
+- Python 3.11 or later
+- Rust 1.75 or later
+- Node.js 20 LTS
+- 8GB RAM minimum (16GB recommended for neural engines)
+
+Installation Steps
+
+1. Clone the repository from GitHub
+2. Run the setup script: ./setup.sh
+3. Configure device settings in device_config.json
+4. Start the WebSocket server
+
+NOTE: GPU acceleration requires CUDA 12.0 or Metal Performance Shaders on macOS.
+
+TROUBLESHOOTING
+
+Common Issues
+
+If the alignment server fails to start, check that stable-ts is properly installed in the virtual environment. The error "No module named stable_whisper" indicates a missing dependency.
+
+For memory issues with large documents, increase the chunk size in server_registry.json or enable progressive loading mode.
+
+WARNING: Do not modify the protocol buffer definitions without updating both the Rust and TypeScript type mirrors.`,
+
+  mixed: `THE WANDERER'S GUIDE
+A Brief Introduction
+
+Welcome, dear reader, to this unusual collection of advice, stories, and observations gathered during my travels across the continent.
+
+PART I: LESSONS FROM THE ROAD
+
+Chapter 1: On Beginnings
+
+Every journey starts with a single step — or so they say. In my experience, most journeys start with a wrong turn.
+
+"You're lost again, aren't you?" the innkeeper asked, peering over his spectacles.
+
+I studied the map, turning it upside down. "Not lost," I insisted. "Temporarily uncertain of my position."
+
+He laughed. "That's what they all say."
+
+Some practical notes for fellow travelers:
+
+- Always carry a compass (and know how to use it)
+- Pack light — you'll thank yourself on the third day
+- Learn three phrases in every language: "hello," "thank you," and "where is the bathroom?"
+
+> "Not all those who wander are lost." — J.R.R. Tolkien
+
+Although, I should note, a significant number of them are.
+
+* * *
+
+Chapter 2: On Hospitality
+
+The best meals I've ever had were in the humblest kitchens. There's a lesson there, I think, about expectations and reality.`
+};
+
+document.querySelectorAll('.sample-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const key = btn.dataset.sample;
+    textInput.value = SAMPLES[key] || '';
+    log(`Loaded sample: ${key}`);
+  });
+});
+
+// ── Utility ──
+function escHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ── Event handlers ──
+analyzeBtn.addEventListener('click', analyze);
+clearBtn.addEventListener('click', () => {
+  textInput.value = '';
+  tabElements.innerHTML = '';
+  tabHighlight.innerHTML = '';
+  tabJson.textContent = 'No results yet.';
+  voiceElements.innerHTML = '';
+  statsBar.innerHTML = '';
+  lastResult = null;
+  log('Cleared');
+});
+
+// Ctrl+Enter to analyze
+textInput.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    e.preventDefault();
+    analyze();
+  }
+});
+
+// ── File Import ──
+const fileInput = document.getElementById('file-input');
+const importFileBtn = document.getElementById('import-file-btn');
+const testFilesBtn = document.getElementById('test-files-btn');
+const testFilesMenu = document.getElementById('test-files-menu');
+const importInfo = document.getElementById('import-info');
+
+// "Import File..." button triggers hidden file input
+importFileBtn.addEventListener('click', () => fileInput.click());
+
+fileInput.addEventListener('change', () => {
+  const file = fileInput.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    textInput.value = e.target.result;
+    // Auto-detect format from extension
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (ext === 'md') formatSelect.value = 'markdown';
+    else if (ext === 'html' || ext === 'htm') formatSelect.value = 'html';
+    else if (ext === 'txt') formatSelect.value = 'plain';
+    else formatSelect.value = 'auto';
+    importInfo.textContent = `Loaded: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+    log(`Imported file: ${file.name} (${file.size} bytes, format: ${formatSelect.value})`, 'success');
+  };
+  reader.onerror = () => {
+    log(`Failed to read file: ${file.name}`, 'error');
+  };
+  reader.readAsText(file);
+  fileInput.value = ''; // reset so same file can be re-imported
+});
+
+// Test files dropdown
+const TEST_FILES = [
+  { name: 'novel-chapter.txt', label: 'Novel Chapter', ext: 'txt' },
+  { name: 'podcast-transcript.txt', label: 'Podcast Transcript', ext: 'txt' },
+  { name: 'legal-contract.txt', label: 'Legal Contract', ext: 'txt' },
+  { name: 'mixed-academic.txt', label: 'Academic Paper', ext: 'txt' },
+  { name: 'api-reference.md', label: 'API Reference', ext: 'md' },
+  { name: 'recipe.md', label: 'Sourdough Recipe', ext: 'md' },
+  { name: 'changelog.md', label: 'Changelog', ext: 'md' },
+  { name: 'news-article.html', label: 'News Article', ext: 'html' },
+  { name: 'short-story.html', label: 'Short Story', ext: 'html' },
+];
+
+// Build dropdown menu
+testFilesMenu.innerHTML = TEST_FILES.map(f =>
+  `<div class="test-file-item" data-file="${f.name}" data-ext="${f.ext}">
+    <span>${f.label}</span>
+    <span class="test-file-ext">.${f.ext}</span>
+  </div>`
+).join('');
+
+testFilesBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  testFilesMenu.classList.toggle('open');
+});
+
+document.addEventListener('click', () => {
+  testFilesMenu.classList.remove('open');
+});
+
+testFilesMenu.addEventListener('click', async (e) => {
+  const item = e.target.closest('.test-file-item');
+  if (!item) return;
+  const fileName = item.dataset.file;
+  const ext = item.dataset.ext;
+  testFilesMenu.classList.remove('open');
+
+  try {
+    const resp = await fetch(`test-files/${fileName}`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const text = await resp.text();
+    textInput.value = text;
+
+    if (ext === 'md') formatSelect.value = 'markdown';
+    else if (ext === 'html' || ext === 'htm') formatSelect.value = 'html';
+    else formatSelect.value = 'plain';
+
+    importInfo.textContent = `Loaded: ${fileName} (${(text.length / 1024).toFixed(1)} KB)`;
+    log(`Loaded test file: ${fileName} (${text.length} chars, format: ${formatSelect.value})`, 'success');
+  } catch (err) {
+    log(`Failed to load test file: ${fileName} — ${err}`, 'error');
+    importInfo.textContent = `Error loading ${fileName}`;
+  }
+});
+
+// ── Voice Scheme Editor ──
+
+const ELEMENT_TYPES = [
+  'heading', 'title', 'subtitle', 'paragraph', 'dialogue', 'dialogue_attr',
+  'list_item', 'blockquote', 'code_block', 'code_inline', 'emphasis', 'strong',
+  'link', 'separator', 'caption', 'footnote', 'metadata', 'table_header',
+  'table_cell', 'aside',
+];
+
+const TYPE_COLORS = {
+  heading: '#a78bfa', title: '#e94560', subtitle: '#c73a52', paragraph: '#93c5fd',
+  dialogue: '#fbbf24', dialogue_attr: '#d4a017', list_item: '#86efac',
+  blockquote: '#a5b4fc', code_block: '#a1a1aa', code_inline: '#a1a1aa',
+  emphasis: '#f9a8d4', strong: '#fdba74', link: '#38bdf8', separator: '#fca5a5',
+  caption: '#67d5f0', footnote: '#a1a1aa', metadata: '#a1a1aa',
+  table_header: '#c4b5fd', table_cell: '#a78bfa', aside: '#a5b4fc',
+};
+
+// Default scheme (mirrors server)
+const DEFAULT_SCHEME = {
+  heading:       { rate: 0.9,  pitch: 1.1,  volume: 1.0,  pause_before_ms: 600, pause_after_ms: 400, voice_hint: 'authoritative' },
+  paragraph:     { rate: 1.0,  pitch: 1.0,  volume: 1.0,  pause_before_ms: 200, pause_after_ms: 200, voice_hint: '' },
+  dialogue:      { rate: 1.0,  pitch: 1.05, volume: 1.0,  pause_before_ms: 100, pause_after_ms: 100, voice_hint: 'expressive' },
+  dialogue_attr: { rate: 0.95, pitch: 0.95, volume: 0.85, pause_before_ms: 0,   pause_after_ms: 100, voice_hint: 'neutral' },
+  list_item:     { rate: 1.0,  pitch: 1.0,  volume: 1.0,  pause_before_ms: 150, pause_after_ms: 150, voice_hint: '' },
+  blockquote:    { rate: 0.95, pitch: 0.95, volume: 0.9,  pause_before_ms: 300, pause_after_ms: 300, voice_hint: 'reflective' },
+  code_block:    { rate: 0.85, pitch: 0.9,  volume: 0.9,  pause_before_ms: 400, pause_after_ms: 400, voice_hint: 'monotone' },
+  code_inline:   { rate: 0.9,  pitch: 0.95, volume: 1.0,  pause_before_ms: 0,   pause_after_ms: 0,   voice_hint: '' },
+  emphasis:      { rate: 0.95, pitch: 1.05, volume: 1.0,  pause_before_ms: 0,   pause_after_ms: 0,   voice_hint: '' },
+  strong:        { rate: 0.9,  pitch: 1.0,  volume: 1.1,  pause_before_ms: 0,   pause_after_ms: 0,   voice_hint: '' },
+  link:          { rate: 1.0,  pitch: 1.0,  volume: 1.0,  pause_before_ms: 0,   pause_after_ms: 0,   voice_hint: '' },
+  separator:     { rate: 1.0,  pitch: 1.0,  volume: 0.0,  pause_before_ms: 800, pause_after_ms: 800, voice_hint: '' },
+  title:         { rate: 0.85, pitch: 1.15, volume: 1.0,  pause_before_ms: 0,   pause_after_ms: 600, voice_hint: 'authoritative' },
+  subtitle:      { rate: 0.9,  pitch: 1.05, volume: 0.95, pause_before_ms: 0,   pause_after_ms: 400, voice_hint: '' },
+  footnote:      { rate: 0.9,  pitch: 0.9,  volume: 0.8,  pause_before_ms: 300, pause_after_ms: 300, voice_hint: 'quiet' },
+  caption:       { rate: 0.95, pitch: 0.95, volume: 0.85, pause_before_ms: 200, pause_after_ms: 200, voice_hint: '' },
+  metadata:      { rate: 0.9,  pitch: 0.9,  volume: 0.8,  pause_before_ms: 200, pause_after_ms: 200, voice_hint: 'neutral' },
+  table_header:  { rate: 0.95, pitch: 1.0,  volume: 1.0,  pause_before_ms: 200, pause_after_ms: 100, voice_hint: '' },
+  table_cell:    { rate: 1.0,  pitch: 1.0,  volume: 1.0,  pause_before_ms: 50,  pause_after_ms: 50,  voice_hint: '' },
+  aside:         { rate: 0.9,  pitch: 0.95, volume: 0.85, pause_before_ms: 300, pause_after_ms: 300, voice_hint: 'aside' },
+};
+
+const PRESETS = {
+  default: DEFAULT_SCHEME,
+  audiobook: {
+    heading:       { rate: 0.8,  pitch: 1.15, volume: 1.05, pause_before_ms: 800, pause_after_ms: 500, voice_hint: 'announcer' },
+    paragraph:     { rate: 0.95, pitch: 1.0,  volume: 1.0,  pause_before_ms: 250, pause_after_ms: 250, voice_hint: '' },
+    dialogue:      { rate: 1.05, pitch: 1.1,  volume: 1.0,  pause_before_ms: 150, pause_after_ms: 150, voice_hint: 'character' },
+    dialogue_attr: { rate: 0.85, pitch: 0.9,  volume: 0.75, pause_before_ms: 0,   pause_after_ms: 100, voice_hint: 'narrator' },
+    list_item:     { rate: 0.95, pitch: 1.0,  volume: 1.0,  pause_before_ms: 200, pause_after_ms: 200, voice_hint: '' },
+    blockquote:    { rate: 0.85, pitch: 1.05, volume: 0.9,  pause_before_ms: 500, pause_after_ms: 500, voice_hint: 'contemplative' },
+    code_block:    { rate: 0.75, pitch: 0.85, volume: 0.85, pause_before_ms: 600, pause_after_ms: 600, voice_hint: 'technical' },
+    separator:     { rate: 1.0,  pitch: 1.0,  volume: 0.0,  pause_before_ms: 1200,pause_after_ms: 1200,voice_hint: '' },
+    title:         { rate: 0.75, pitch: 1.2,  volume: 1.1,  pause_before_ms: 0,   pause_after_ms: 800, voice_hint: 'dramatic' },
+    subtitle:      { rate: 0.85, pitch: 1.1,  volume: 0.95, pause_before_ms: 0,   pause_after_ms: 500, voice_hint: '' },
+    footnote:      { rate: 0.85, pitch: 0.85, volume: 0.7,  pause_before_ms: 400, pause_after_ms: 400, voice_hint: 'whisper' },
+  },
+  podcast: {
+    heading:       { rate: 0.95, pitch: 1.05, volume: 1.05, pause_before_ms: 400, pause_after_ms: 300, voice_hint: 'upbeat' },
+    paragraph:     { rate: 1.05, pitch: 1.0,  volume: 1.0,  pause_before_ms: 150, pause_after_ms: 150, voice_hint: '' },
+    dialogue:      { rate: 1.1,  pitch: 1.05, volume: 1.05, pause_before_ms: 100, pause_after_ms: 100, voice_hint: 'conversational' },
+    dialogue_attr: { rate: 0.95, pitch: 0.95, volume: 0.8,  pause_before_ms: 0,   pause_after_ms: 50,  voice_hint: '' },
+    list_item:     { rate: 1.0,  pitch: 1.0,  volume: 1.0,  pause_before_ms: 100, pause_after_ms: 100, voice_hint: '' },
+    blockquote:    { rate: 0.9,  pitch: 1.0,  volume: 0.95, pause_before_ms: 250, pause_after_ms: 250, voice_hint: 'quote' },
+    code_block:    { rate: 0.8,  pitch: 0.9,  volume: 0.9,  pause_before_ms: 300, pause_after_ms: 300, voice_hint: 'monotone' },
+    separator:     { rate: 1.0,  pitch: 1.0,  volume: 0.0,  pause_before_ms: 600, pause_after_ms: 600, voice_hint: '' },
+    title:         { rate: 0.9,  pitch: 1.1,  volume: 1.1,  pause_before_ms: 0,   pause_after_ms: 400, voice_hint: 'intro' },
+  },
+  accessibility: {
+    heading:       { rate: 0.8,  pitch: 1.15, volume: 1.1,  pause_before_ms: 1000,pause_after_ms: 600, voice_hint: 'clear' },
+    paragraph:     { rate: 0.85, pitch: 1.0,  volume: 1.0,  pause_before_ms: 400, pause_after_ms: 400, voice_hint: '' },
+    dialogue:      { rate: 0.9,  pitch: 1.05, volume: 1.0,  pause_before_ms: 300, pause_after_ms: 300, voice_hint: 'expressive' },
+    dialogue_attr: { rate: 0.8,  pitch: 0.95, volume: 0.9,  pause_before_ms: 100, pause_after_ms: 200, voice_hint: '' },
+    list_item:     { rate: 0.85, pitch: 1.0,  volume: 1.0,  pause_before_ms: 300, pause_after_ms: 300, voice_hint: '' },
+    blockquote:    { rate: 0.8,  pitch: 1.0,  volume: 0.95, pause_before_ms: 500, pause_after_ms: 500, voice_hint: 'distinct' },
+    code_block:    { rate: 0.7,  pitch: 0.9,  volume: 0.95, pause_before_ms: 600, pause_after_ms: 600, voice_hint: 'spell-out' },
+    separator:     { rate: 1.0,  pitch: 1.0,  volume: 0.0,  pause_before_ms: 1500,pause_after_ms: 1500,voice_hint: '' },
+    title:         { rate: 0.75, pitch: 1.2,  volume: 1.15, pause_before_ms: 0,   pause_after_ms: 800, voice_hint: 'announcement' },
+    footnote:      { rate: 0.75, pitch: 0.9,  volume: 0.85, pause_before_ms: 500, pause_after_ms: 500, voice_hint: 'aside' },
+  },
+  dramatic: {
+    heading:       { rate: 0.7,  pitch: 1.2,  volume: 1.1,  pause_before_ms: 1000,pause_after_ms: 800, voice_hint: 'dramatic' },
+    paragraph:     { rate: 0.9,  pitch: 1.0,  volume: 1.0,  pause_before_ms: 300, pause_after_ms: 300, voice_hint: '' },
+    dialogue:      { rate: 1.1,  pitch: 1.15, volume: 1.1,  pause_before_ms: 200, pause_after_ms: 200, voice_hint: 'theatrical' },
+    dialogue_attr: { rate: 0.75, pitch: 0.85, volume: 0.7,  pause_before_ms: 0,   pause_after_ms: 200, voice_hint: 'whisper' },
+    list_item:     { rate: 0.95, pitch: 1.0,  volume: 1.0,  pause_before_ms: 200, pause_after_ms: 200, voice_hint: '' },
+    blockquote:    { rate: 0.8,  pitch: 1.1,  volume: 1.05, pause_before_ms: 600, pause_after_ms: 600, voice_hint: 'gravitas' },
+    code_block:    { rate: 0.7,  pitch: 0.85, volume: 0.8,  pause_before_ms: 500, pause_after_ms: 500, voice_hint: 'monotone' },
+    separator:     { rate: 1.0,  pitch: 1.0,  volume: 0.0,  pause_before_ms: 1500,pause_after_ms: 1500,voice_hint: '' },
+    title:         { rate: 0.65, pitch: 1.25, volume: 1.15, pause_before_ms: 0,   pause_after_ms: 1000,voice_hint: 'epic' },
+    subtitle:      { rate: 0.8,  pitch: 1.1,  volume: 1.0,  pause_before_ms: 0,   pause_after_ms: 600, voice_hint: '' },
+    footnote:      { rate: 0.85, pitch: 0.85, volume: 0.7,  pause_before_ms: 400, pause_after_ms: 400, voice_hint: 'aside' },
+  },
+  flat: {
+    heading:       { rate: 1.0,  pitch: 1.0,  volume: 1.0,  pause_before_ms: 300, pause_after_ms: 200, voice_hint: '' },
+    paragraph:     { rate: 1.0,  pitch: 1.0,  volume: 1.0,  pause_before_ms: 150, pause_after_ms: 150, voice_hint: '' },
+    dialogue:      { rate: 1.0,  pitch: 1.0,  volume: 1.0,  pause_before_ms: 100, pause_after_ms: 100, voice_hint: '' },
+    dialogue_attr: { rate: 1.0,  pitch: 1.0,  volume: 1.0,  pause_before_ms: 0,   pause_after_ms: 50,  voice_hint: '' },
+    list_item:     { rate: 1.0,  pitch: 1.0,  volume: 1.0,  pause_before_ms: 100, pause_after_ms: 100, voice_hint: '' },
+    blockquote:    { rate: 1.0,  pitch: 1.0,  volume: 1.0,  pause_before_ms: 200, pause_after_ms: 200, voice_hint: '' },
+    code_block:    { rate: 1.0,  pitch: 1.0,  volume: 1.0,  pause_before_ms: 200, pause_after_ms: 200, voice_hint: '' },
+    separator:     { rate: 1.0,  pitch: 1.0,  volume: 0.0,  pause_before_ms: 500, pause_after_ms: 500, voice_hint: '' },
+    title:         { rate: 1.0,  pitch: 1.0,  volume: 1.0,  pause_before_ms: 0,   pause_after_ms: 300, voice_hint: '' },
+    subtitle:      { rate: 1.0,  pitch: 1.0,  volume: 1.0,  pause_before_ms: 0,   pause_after_ms: 200, voice_hint: '' },
+    footnote:      { rate: 1.0,  pitch: 1.0,  volume: 1.0,  pause_before_ms: 200, pause_after_ms: 200, voice_hint: '' },
+  },
+};
+
+const schemeSelect = document.getElementById('scheme-select');
+const schemeNameInput = document.getElementById('scheme-name-input');
+const schemeSaveBtn = document.getElementById('scheme-save-btn');
+const schemeSaveAsBtn = document.getElementById('scheme-save-as-btn');
+const schemeResetBtn = document.getElementById('scheme-reset-btn');
+const schemeExportBtn = document.getElementById('scheme-export-btn');
+const schemeImportBtn = document.getElementById('scheme-import-btn');
+const schemeImportFile = document.getElementById('scheme-import-file');
+const schemeApplyBtn = document.getElementById('scheme-apply-btn');
+const schemeDirty = document.getElementById('scheme-dirty');
+const schemeTableBody = document.getElementById('scheme-table-body');
+const schemeSavedList = document.getElementById('scheme-saved-list');
+
+const SCHEMES_STORAGE_KEY = 'webvox-doc-voice-schemes';
+let currentScheme = JSON.parse(JSON.stringify(DEFAULT_SCHEME));
+let currentSchemeName = '__default';
+let schemeDirtyFlag = false;
+
+function deepClone(obj) { return JSON.parse(JSON.stringify(obj)); }
+
+function loadSavedSchemes() {
+  try {
+    const raw = localStorage.getItem(SCHEMES_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
+}
+
+function saveSchemesToStorage(schemes) {
+  localStorage.setItem(SCHEMES_STORAGE_KEY, JSON.stringify(schemes));
+}
+
+function markDirty() {
+  schemeDirtyFlag = true;
+  schemeDirty.hidden = false;
+}
+
+function clearDirty() {
+  schemeDirtyFlag = false;
+  schemeDirty.hidden = true;
+}
+
+// Build the editable table
+function renderSchemeTable() {
+  schemeTableBody.innerHTML = '';
+  for (const type of ELEMENT_TYPES) {
+    const v = currentScheme[type] || { rate: 1.0, pitch: 1.0, volume: 1.0, pause_before_ms: 0, pause_after_ms: 0, voice_hint: '' };
+    const color = TYPE_COLORS[type] || '#888';
+    const tr = document.createElement('tr');
+    tr.dataset.type = type;
+
+    tr.innerHTML = `
+      <td><div class="scheme-type-cell"><span class="scheme-type-dot" style="background:${color}"></span> ${type}</div></td>
+      <td><input type="range" class="scheme-slider" data-field="rate" min="0.5" max="1.5" step="0.05" value="${v.rate}" /></td>
+      <td><span class="scheme-val" data-display="rate">${v.rate.toFixed(2)}</span></td>
+      <td><input type="range" class="scheme-slider" data-field="pitch" min="0.5" max="1.5" step="0.05" value="${v.pitch}" /></td>
+      <td><span class="scheme-val" data-display="pitch">${v.pitch.toFixed(2)}</span></td>
+      <td><input type="range" class="scheme-slider" data-field="volume" min="0.0" max="1.5" step="0.05" value="${v.volume}" /></td>
+      <td><span class="scheme-val" data-display="volume">${v.volume.toFixed(2)}</span></td>
+      <td><input type="number" class="scheme-input" data-field="pause_before_ms" min="0" max="3000" step="50" value="${v.pause_before_ms}" /></td>
+      <td><input type="number" class="scheme-input" data-field="pause_after_ms" min="0" max="3000" step="50" value="${v.pause_after_ms}" /></td>
+      <td><input type="text" class="scheme-input hint" data-field="voice_hint" value="${v.voice_hint || ''}" placeholder="none" /></td>
+    `;
+    schemeTableBody.appendChild(tr);
+  }
+
+  // Wire up sliders
+  schemeTableBody.querySelectorAll('.scheme-slider').forEach(slider => {
+    slider.addEventListener('input', () => {
+      const type = slider.closest('tr').dataset.type;
+      const field = slider.dataset.field;
+      const val = parseFloat(slider.value);
+      if (!currentScheme[type]) currentScheme[type] = deepClone(DEFAULT_SCHEME.paragraph);
+      currentScheme[type][field] = val;
+      slider.closest('tr').querySelector(`[data-display="${field}"]`).textContent = val.toFixed(2);
+      markDirty();
+    });
+  });
+
+  // Wire up number/text inputs
+  schemeTableBody.querySelectorAll('.scheme-input').forEach(input => {
+    input.addEventListener('input', () => {
+      const type = input.closest('tr').dataset.type;
+      const field = input.dataset.field;
+      if (!currentScheme[type]) currentScheme[type] = deepClone(DEFAULT_SCHEME.paragraph);
+      if (field === 'voice_hint') {
+        currentScheme[type][field] = input.value;
+      } else {
+        currentScheme[type][field] = parseInt(input.value) || 0;
+      }
+      markDirty();
+    });
+  });
+}
+
+// Update dropdown with saved schemes
+function refreshSchemeDropdown() {
+  const saved = loadSavedSchemes();
+  // Remove old custom options
+  while (schemeSelect.options.length > 1) schemeSelect.remove(1);
+  for (const name of Object.keys(saved)) {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    schemeSelect.appendChild(opt);
+  }
+  schemeSelect.value = currentSchemeName;
+}
+
+// Render saved schemes list
+function renderSavedSchemes() {
+  const saved = loadSavedSchemes();
+  const names = Object.keys(saved);
+  if (names.length === 0) {
+    schemeSavedList.innerHTML = '<div style="color:var(--text2);font-size:0.75rem;padding:8px 0;">No saved schemes yet. Edit values above and click Save.</div>';
+    return;
+  }
+  schemeSavedList.innerHTML = '';
+  for (const name of names) {
+    const item = document.createElement('div');
+    item.className = 'scheme-saved-item';
+    const types = Object.keys(saved[name]);
+    item.innerHTML = `
+      <span class="scheme-saved-name" data-name="${escHtml(name)}">${escHtml(name)}</span>
+      <span style="color:var(--text2);font-size:0.7rem;">${types.length} types</span>
+      <div class="scheme-saved-actions">
+        <button data-action="load" data-name="${escHtml(name)}">Load</button>
+        <button data-action="delete" data-name="${escHtml(name)}" style="color:var(--error);">Delete</button>
+      </div>
+    `;
+    schemeSavedList.appendChild(item);
+  }
+}
+
+// Load a scheme into the editor
+function loadScheme(scheme, name) {
+  // Fill in missing types from default
+  currentScheme = deepClone(DEFAULT_SCHEME);
+  for (const [type, vals] of Object.entries(scheme)) {
+    currentScheme[type] = { ...currentScheme[type], ...vals };
+  }
+  currentSchemeName = name;
+  schemeSelect.value = name;
+  schemeNameInput.value = name === '__default' ? '' : name;
+  renderSchemeTable();
+  clearDirty();
+  log(`Loaded scheme: ${name === '__default' ? 'Default' : name}`);
+}
+
+// Preset buttons
+document.querySelectorAll('.scheme-preset-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const preset = btn.dataset.preset;
+    const scheme = PRESETS[preset];
+    if (!scheme) return;
+    loadScheme(scheme, '__default');
+    document.querySelectorAll('.scheme-preset-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    log(`Applied preset: ${preset}`, 'success');
+  });
+});
+
+// Scheme dropdown
+schemeSelect.addEventListener('change', () => {
+  const name = schemeSelect.value;
+  if (name === '__default') {
+    loadScheme(DEFAULT_SCHEME, '__default');
+  } else {
+    const saved = loadSavedSchemes();
+    if (saved[name]) loadScheme(saved[name], name);
+  }
+});
+
+// Save
+schemeSaveBtn.addEventListener('click', () => {
+  let name = schemeNameInput.value.trim();
+  if (!name) {
+    if (currentSchemeName !== '__default') {
+      name = currentSchemeName;
+    } else {
+      log('Enter a name to save the scheme', 'error');
+      return;
+    }
+  }
+  const saved = loadSavedSchemes();
+  saved[name] = deepClone(currentScheme);
+  saveSchemesToStorage(saved);
+  currentSchemeName = name;
+  refreshSchemeDropdown();
+  renderSavedSchemes();
+  clearDirty();
+  log(`Saved scheme: ${name}`, 'success');
+});
+
+// Save As New
+schemeSaveAsBtn.addEventListener('click', () => {
+  const name = schemeNameInput.value.trim();
+  if (!name) {
+    log('Enter a name for the new scheme', 'error');
+    return;
+  }
+  const saved = loadSavedSchemes();
+  saved[name] = deepClone(currentScheme);
+  saveSchemesToStorage(saved);
+  currentSchemeName = name;
+  refreshSchemeDropdown();
+  renderSavedSchemes();
+  clearDirty();
+  log(`Created new scheme: ${name}`, 'success');
+});
+
+// Reset to default
+schemeResetBtn.addEventListener('click', () => {
+  loadScheme(DEFAULT_SCHEME, '__default');
+  document.querySelectorAll('.scheme-preset-btn').forEach(b => b.classList.remove('active'));
+  log('Reset to default scheme');
+});
+
+// Export JSON
+schemeExportBtn.addEventListener('click', () => {
+  const name = currentSchemeName === '__default' ? 'default-scheme' : currentSchemeName;
+  const blob = new Blob([JSON.stringify(currentScheme, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `voice-scheme-${name}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  log(`Exported scheme as ${a.download}`, 'success');
+});
+
+// Import JSON
+schemeImportBtn.addEventListener('click', () => schemeImportFile.click());
+schemeImportFile.addEventListener('change', () => {
+  const file = schemeImportFile.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      // Validate: should be an object with type keys
+      if (typeof data !== 'object' || Array.isArray(data)) throw new Error('Expected an object');
+      const name = file.name.replace(/\.json$/i, '').replace(/^voice-scheme-/, '');
+      loadScheme(data, name);
+      schemeNameInput.value = name;
+      markDirty();
+      log(`Imported scheme from ${file.name}`, 'success');
+    } catch (err) {
+      log(`Failed to import scheme: ${err}`, 'error');
+    }
+  };
+  reader.readAsText(file);
+  schemeImportFile.value = '';
+});
+
+// Re-Analyze with current scheme
+schemeApplyBtn.addEventListener('click', async () => {
+  const text = textInput.value.trim();
+  if (!text) { log('No text to analyze', 'error'); return; }
+
+  schemeApplyBtn.disabled = true;
+  schemeApplyBtn.textContent = 'Analyzing...';
+  log('Re-analyzing with custom voice scheme...');
+
+  try {
+    const resp = await fetch(`${SERVER}/analyze_with_scheme`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text,
+        voice_scheme: currentScheme,
+      }),
+    });
+    const data = await resp.json();
+
+    if (!data.success) {
+      log(`Analysis failed: ${data.error}`, 'error');
+      return;
+    }
+
+    lastResult = data;
+    log(`Re-analyzed with custom scheme: ${data.elements.length} elements (format: ${data.format})`, 'success');
+
+    renderStats(data.stats || { total_elements: data.elements.length, total_words: 0, total_chars: 0 });
+    renderElements(data.elements);
+    renderHighlight(data.elements, text);
+    renderJson(data);
+    renderVoiceScheme(data.elements);
+
+  } catch (err) {
+    log(`Request error: ${err}`, 'error');
+  } finally {
+    schemeApplyBtn.disabled = false;
+    schemeApplyBtn.textContent = 'Re-Analyze with Scheme';
+  }
+});
+
+// Saved schemes list actions
+schemeSavedList.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-action]');
+  const nameEl = e.target.closest('.scheme-saved-name');
+
+  if (nameEl) {
+    const name = nameEl.dataset.name;
+    const saved = loadSavedSchemes();
+    if (saved[name]) {
+      loadScheme(saved[name], name);
+      refreshSchemeDropdown();
+    }
+    return;
+  }
+
+  if (!btn) return;
+  const action = btn.dataset.action;
+  const name = btn.dataset.name;
+
+  if (action === 'load') {
+    const saved = loadSavedSchemes();
+    if (saved[name]) {
+      loadScheme(saved[name], name);
+      refreshSchemeDropdown();
+    }
+  } else if (action === 'delete') {
+    const saved = loadSavedSchemes();
+    delete saved[name];
+    saveSchemesToStorage(saved);
+    if (currentSchemeName === name) {
+      loadScheme(DEFAULT_SCHEME, '__default');
+    }
+    refreshSchemeDropdown();
+    renderSavedSchemes();
+    log(`Deleted scheme: ${name}`);
+  }
+});
+
+// ── AI Prompt Scheme Builder ──
+
+// API key loaded from local config file (not committed — see .env.json.example)
+let ANTHROPIC_API_KEY = '';
+(async () => {
+  try {
+    const resp = await fetch('env.json');
+    if (resp.ok) {
+      const cfg = await resp.json();
+      ANTHROPIC_API_KEY = cfg.ANTHROPIC_API_KEY || '';
+      if (ANTHROPIC_API_KEY) log('Anthropic API key loaded from env.json', 'success');
+    }
+  } catch { /* env.json not found — AI features disabled */ }
+})();
+
+const aiPromptInput = document.getElementById('ai-prompt-input');
+const aiPromptSend = document.getElementById('ai-prompt-send');
+const aiPromptStatus = document.getElementById('ai-prompt-status');
+const aiPromptHistory = document.getElementById('ai-prompt-history');
+
+const AI_HISTORY_KEY = 'webvox-ai-prompt-history';
+
+function loadAiHistory() {
+  try { return JSON.parse(localStorage.getItem(AI_HISTORY_KEY) || '[]'); } catch { return []; }
+}
+
+function saveAiHistory(history) {
+  localStorage.setItem(AI_HISTORY_KEY, JSON.stringify(history.slice(0, 20)));
+}
+
+function renderAiHistory() {
+  const history = loadAiHistory();
+  if (!history.length) { aiPromptHistory.innerHTML = ''; return; }
+  aiPromptHistory.innerHTML = history.map((h, i) =>
+    `<div class="ai-prompt-history-item">
+      <span class="ai-prompt-history-prompt" data-idx="${i}" title="Click to reuse">${escHtml(h.prompt.slice(0, 80))}${h.prompt.length > 80 ? '...' : ''}</span>
+      <span style="color:var(--text2);font-size:0.65rem;">${new Date(h.time).toLocaleTimeString()}</span>
+    </div>`
+  ).join('');
+}
+
+aiPromptHistory.addEventListener('click', (e) => {
+  const el = e.target.closest('.ai-prompt-history-prompt');
+  if (!el) return;
+  const history = loadAiHistory();
+  const idx = parseInt(el.dataset.idx);
+  if (history[idx]) aiPromptInput.value = history[idx].prompt;
+});
+
+// Example prompt chips
+document.querySelectorAll('.ai-prompt-example').forEach(chip => {
+  chip.addEventListener('click', () => {
+    aiPromptInput.value = chip.dataset.prompt;
+    aiPromptInput.focus();
+  });
+});
+
+// Build the system prompt for Claude
+function buildSystemPrompt() {
+  const schemeJson = JSON.stringify(DEFAULT_SCHEME, null, 2);
+  return `You are a voice scheme designer for a document-aware text-to-speech system. Your job is to create voice parameter mappings based on natural language descriptions.
+
+A voice scheme maps document element types to voice parameters. The element types are:
+${ELEMENT_TYPES.join(', ')}
+
+Each element type has these parameters:
+- rate: Speech rate multiplier (0.5 to 1.5, where 1.0 is normal)
+- pitch: Pitch multiplier (0.5 to 1.5, where 1.0 is normal)
+- volume: Volume multiplier (0.0 to 1.5, where 1.0 is normal, 0.0 is silent)
+- pause_before_ms: Milliseconds of silence before the element (0 to 3000)
+- pause_after_ms: Milliseconds of silence after the element (0 to 3000)
+- voice_hint: A short text hint for the TTS engine (e.g. "expressive", "whisper", "monotone", "dramatic", "authoritative", etc.) or empty string
+
+Here is the current default scheme for reference:
+${schemeJson}
+
+RULES:
+1. Return ONLY valid JSON — a single object mapping element type names to parameter objects.
+2. Include ALL 20 element types in your response.
+3. All numeric values must be within the specified ranges.
+4. voice_hint should be a single descriptive word or short phrase, or empty string.
+5. Start from the default scheme and modify values based on the user's description.
+6. Be creative but sensible — extreme values should only be used if explicitly requested.
+7. Do NOT include any text outside the JSON object — no explanation, no markdown fences, no comments.`;
+}
+
+async function generateSchemeFromPrompt(prompt) {
+  if (!ANTHROPIC_API_KEY) {
+    aiPromptStatus.className = 'ai-prompt-status error';
+    aiPromptStatus.textContent = 'No API key — create env.json with your ANTHROPIC_API_KEY (see env.json.example)';
+    log('AI scheme generation requires env.json with ANTHROPIC_API_KEY', 'error');
+    return;
+  }
+
+  aiPromptSend.disabled = true;
+  aiPromptSend.textContent = 'Thinking...';
+  aiPromptStatus.className = 'ai-prompt-status thinking';
+  aiPromptStatus.textContent = 'Sending to Claude...';
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 2048,
+        system: buildSystemPrompt(),
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+
+    if (!resp.ok) {
+      const errData = await resp.json().catch(() => ({}));
+      throw new Error(errData.error?.message || `HTTP ${resp.status}`);
+    }
+
+    const data = await resp.json();
+    const text = data.content?.[0]?.text || '';
+
+    aiPromptStatus.textContent = 'Parsing response...';
+
+    // Extract JSON from response (handle possible markdown fences)
+    let jsonStr = text.trim();
+    const fenceMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (fenceMatch) jsonStr = fenceMatch[1].trim();
+
+    const scheme = JSON.parse(jsonStr);
+
+    // Validate structure
+    if (typeof scheme !== 'object' || Array.isArray(scheme)) {
+      throw new Error('Response is not a valid scheme object');
+    }
+
+    // Clamp values to valid ranges
+    for (const [type, vals] of Object.entries(scheme)) {
+      if (typeof vals !== 'object') continue;
+      if (vals.rate != null) vals.rate = Math.max(0.5, Math.min(1.5, vals.rate));
+      if (vals.pitch != null) vals.pitch = Math.max(0.5, Math.min(1.5, vals.pitch));
+      if (vals.volume != null) vals.volume = Math.max(0.0, Math.min(1.5, vals.volume));
+      if (vals.pause_before_ms != null) vals.pause_before_ms = Math.max(0, Math.min(3000, Math.round(vals.pause_before_ms)));
+      if (vals.pause_after_ms != null) vals.pause_after_ms = Math.max(0, Math.min(3000, Math.round(vals.pause_after_ms)));
+    }
+
+    // Load into editor
+    loadScheme(scheme, currentSchemeName);
+    markDirty();
+
+    // Save to history
+    const history = loadAiHistory();
+    history.unshift({ prompt, time: Date.now() });
+    saveAiHistory(history);
+    renderAiHistory();
+
+    aiPromptStatus.className = 'ai-prompt-status success';
+    aiPromptStatus.textContent = `Scheme generated — ${Object.keys(scheme).length} element types configured. Review and save when ready.`;
+    log(`AI generated scheme from: "${prompt.slice(0, 60)}..."`, 'success');
+
+  } catch (err) {
+    aiPromptStatus.className = 'ai-prompt-status error';
+    aiPromptStatus.textContent = `Error: ${err.message}`;
+    log(`AI scheme generation failed: ${err.message}`, 'error');
+  } finally {
+    aiPromptSend.disabled = false;
+    aiPromptSend.textContent = 'Generate Scheme';
+  }
+}
+
+aiPromptSend.addEventListener('click', () => {
+  const prompt = aiPromptInput.value.trim();
+  if (!prompt) {
+    aiPromptStatus.className = 'ai-prompt-status error';
+    aiPromptStatus.textContent = 'Type a description first.';
+    return;
+  }
+  generateSchemeFromPrompt(prompt);
+});
+
+// Ctrl+Enter in prompt textarea
+aiPromptInput.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    e.preventDefault();
+    aiPromptSend.click();
+  }
+});
+
+renderAiHistory();
+
+// Init scheme editor
+renderSchemeTable();
+refreshSchemeDropdown();
+renderSavedSchemes();
+
+// ── Init ──
+checkHealth();
+setInterval(checkHealth, 15000);
+log('Test workbench loaded');
+
+  </script>
+</body>
+</html>

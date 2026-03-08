@@ -233,80 +233,92 @@ export interface ServerManageResult {
   error?: string;
 }
 
-// -- Voice Designer Types --
+// -- Document Analysis Types --
 
-export interface VoiceDesignResult {
+export interface DocumentAnalysisResult {
   id: string;
   success: boolean;
-  audioBase64?: string;
-  sampleRate?: number;
-  durationMs?: number;
-  description?: string;
+  format?: string;
+  elements: DocumentElement[];
+  stats?: DocumentStats;
   error?: string;
 }
 
-export interface VoiceBlendResult {
+export interface DocumentElement {
+  type: string;
+  text: string;
+  charOffset: number;
+  charLength: number;
+  level: number;
+  voice?: DocumentVoiceMapping;
+  position?: DocumentPosition;
+}
+
+export interface DocumentVoiceMapping {
+  rate: number;
+  pitch: number;
+  volume: number;
+  pauseBeforeMs: number;
+  pauseAfterMs: number;
+  voiceHint?: string;
+}
+
+export interface DocumentPosition {
+  wordOffset: number;
+  wordCount: number;
+  totalWords: number;
+  progress: number;
+}
+
+export interface DocumentStats {
+  totalElements: number;
+  elementCounts: Record<string, number>;
+  totalChars: number;
+  totalWords: number;
+  analysisTimeMs: number;
+  aiEnhanced: boolean;
+}
+
+export interface NativeDocumentElement {
+  type: string;
+  text: string;
+  char_offset: number;
+  char_length: number;
+  level: number;
+  voice?: {
+    rate: number;
+    pitch: number;
+    volume: number;
+    pause_before_ms: number;
+    pause_after_ms: number;
+    voice_hint?: string;
+  };
+  position?: {
+    word_offset: number;
+    word_count: number;
+    total_words: number;
+    progress: number;
+  };
+}
+
+export interface NativeDocumentAnalysisResult {
   id: string;
   success: boolean;
-  embedding?: number[];
-  dimensions?: number;
-  weightsNormalized?: number[];
-  error?: string;
-}
-
-export interface VoiceProfileSummary {
-  id: string;
-  name: string;
-  description?: string;
-  sampleRate?: number;
-  hasEmbedding: boolean;
-  hasReferenceAudio: boolean;
-  createdAt?: number;
-}
-
-export interface VoiceProfileResult {
-  success: boolean;
-  profileId?: string;
-  error?: string;
-}
-
-export interface NativeVoiceDesignResult {
-  id: string;
-  success: boolean;
-  audio_base64?: string;
-  sample_rate?: number;
-  duration_ms?: number;
-  description?: string;
-  error?: string;
-}
-
-export interface NativeVoiceBlendResult {
-  id: string;
-  success: boolean;
-  embedding?: number[];
-  dimensions?: number;
-  weights_normalized?: number[];
-  error?: string;
-}
-
-export interface NativeVoiceProfileSummary {
-  id: string;
-  name: string;
-  description?: string;
-  sample_rate?: number;
-  has_embedding: boolean;
-  has_reference_audio: boolean;
-  created_at?: number;
-}
-
-export interface NativeVoiceProfileResult {
-  success: boolean;
-  profile_id?: string;
+  format?: string;
+  elements: NativeDocumentElement[];
+  stats?: {
+    total_elements: number;
+    element_counts: Record<string, number>;
+    total_chars: number;
+    total_words: number;
+    analysis_time_ms: number;
+    ai_enhanced: boolean;
+  };
   error?: string;
 }
 
 export interface NativeRequest {
-  type: 'synthesize' | 'cancel' | 'list_voices' | 'get_system_info' | 'validate_voice' | 'list_piper_catalog' | 'download_piper_voice' | 'list_voice_samples' | 'upload_voice_sample' | 'delete_voice_sample' | 'manage_server' | 'get_server_stats' | 'design_voice' | 'blend_voices' | 'list_voice_profiles' | 'save_voice_profile' | 'delete_voice_profile';
+  type: 'synthesize' | 'cancel' | 'list_voices' | 'get_system_info' | 'validate_voice' | 'list_piper_catalog' | 'download_piper_voice' | 'list_voice_samples' | 'upload_voice_sample' | 'delete_voice_sample' | 'manage_server' | 'get_server_stats' | 'analyze_document';
   id?: string;
   text?: string;
   voice_id?: string;
@@ -321,20 +333,13 @@ export interface NativeRequest {
   alignment?: AlignmentGranularity;
   analyze_quality?: boolean;
   quality_analyzers?: string[];
-  // Voice designer fields
-  description?: string;
-  preview_text?: string;
-  audio_samples_base64?: string[];
-  sample_rates?: number[];
-  weights?: number[];
-  profile_id?: string;
-  embedding?: number[];
-  reference_audio_base64?: string;
-  sample_rate?: number;
+  format?: string;
+  use_ai?: boolean;
+  voice_scheme?: Record<string, unknown>;
 }
 
 export interface NativeResponse {
-  type: 'audio_chunk' | 'word_boundary' | 'synthesis_complete' | 'voice_list' | 'error' | 'system_info' | 'voice_validation' | 'piper_catalog' | 'piper_download_complete' | 'voice_samples' | 'voice_sample_result' | 'server_manage_result' | 'server_stats' | 'quality_score' | 'voice_design_result' | 'voice_blend_result' | 'voice_profiles' | 'voice_profile_result';
+  type: 'audio_chunk' | 'word_boundary' | 'synthesis_complete' | 'voice_list' | 'error' | 'system_info' | 'voice_validation' | 'piper_catalog' | 'piper_download_complete' | 'voice_samples' | 'voice_sample_result' | 'server_manage_result' | 'server_stats' | 'quality_score' | 'document_analysis';
   id?: string;
   [key: string]: unknown;
 }

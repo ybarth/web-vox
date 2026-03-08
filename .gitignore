@@ -5,6 +5,7 @@ target/
 .turbo/
 .env
 .env.local
+env.json
 *.swp
 *.swo
 .DS_Store

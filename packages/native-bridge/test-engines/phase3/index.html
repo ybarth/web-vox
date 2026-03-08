@@ -24,6 +24,15 @@ h3 { font-size: 0.85rem; color: var(--accent); margin: 12px 0 6px; }
 .dot.up { background: var(--pass); } .dot.down { background: var(--fail); } .dot.checking { background: var(--warn); }
 .stack-name { font-size: 0.75rem; color: var(--dim); }
 .stack-status { font-size: 0.8rem; margin-left: auto; }
+.service-manager { font-size: 0.78rem; color: var(--dim); margin-bottom: 10px; }
+.service-manager.ready { color: var(--pass); }
+.service-manager.error { color: var(--fail); }
+.service-controls { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.service-grid { display: flex; flex-direction: column; gap: 6px; }
+.service-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+               background: rgba(255,255,255,0.02); border-radius: 4px; flex-wrap: wrap; }
+.service-name { min-width: 120px; font-size: 0.82rem; }
+.service-meta { flex: 1; min-width: 150px; font-size: 0.74rem; color: var(--dim); }
 
 /* Model status */
 .model-status-bar { display: flex; align-items: center; gap: 12px; padding: 6px 12px;
@@ -309,11 +318,10 @@ h3 { font-size: 0.85rem; color: var(--accent); margin: 12px 0 6px; }
 <!-- Model loading status -->
 <div class="card">
   <h2>Model Status</h2>
-  <div class="model-status-bar" id="ms-parler">
-    <span class="model-name">Parler-TTS</span>
-    <span class="model-state idle" id="ms-parler-state">idle</span>
-    <span class="model-stage" id="ms-parler-stage">Not loaded</span>
-    <div class="model-progress"><div class="model-progress-fill" id="ms-parler-progress" style="width:0%"></div></div>
+  <div class="model-status-bar" id="ms-elevenlabs">
+    <span class="model-name">ElevenLabs</span>
+    <span class="model-state idle" id="ms-elevenlabs-state">checking</span>
+    <span class="model-stage" id="ms-elevenlabs-stage">Checking...</span>
   </div>
   <div class="model-status-bar" id="ms-encoder">
     <span class="model-name">Speaker Encoder</span>
@@ -326,7 +334,39 @@ h3 { font-size: 0.85rem; color: var(--accent); margin: 12px 0 6px; }
     <span class="model-state idle" id="ms-gemini-state">checking</span>
     <span class="model-stage" id="ms-gemini-stage">Checking...</span>
   </div>
-  <button class="preload-btn" id="preload-btn" onclick="preloadModels()">Preload All Models</button>
+  <button class="preload-btn" id="preload-btn" onclick="preloadModels()">Preload Encoder</button>
+</div>
+
+<div class="card">
+  <h2>Service Control</h2>
+  <div class="service-manager" id="service-manager-status">Connecting to WS server manager...</div>
+  <div class="service-controls">
+    <button class="test-btn" id="service-start-required" onclick="startRequiredServices()">Start Required Services</button>
+    <button class="test-btn" id="service-refresh" onclick="refreshServiceStatus()">Refresh Status</button>
+  </div>
+  <div class="service-grid">
+    <div class="service-row">
+      <span class="service-name">Voice Designer</span>
+      <span class="model-state idle" id="svc-voice-designer-state">checking</span>
+      <span class="service-meta" id="svc-voice-designer-meta">Port 21749</span>
+      <button class="test-btn" id="svc-voice-designer-start" onclick="manageStackService('voice-designer', 'start')">Start</button>
+      <button class="test-btn" id="svc-voice-designer-restart" onclick="manageStackService('voice-designer', 'restart')">Restart</button>
+    </div>
+    <div class="service-row">
+      <span class="service-name">Alignment</span>
+      <span class="model-state idle" id="svc-alignment-state">checking</span>
+      <span class="service-meta" id="svc-alignment-meta">Port 21747</span>
+      <button class="test-btn" id="svc-alignment-start" onclick="manageStackService('alignment', 'start')">Start</button>
+      <button class="test-btn" id="svc-alignment-restart" onclick="manageStackService('alignment', 'restart')">Restart</button>
+    </div>
+    <div class="service-row">
+      <span class="service-name">Quality</span>
+      <span class="model-state idle" id="svc-quality-state">checking</span>
+      <span class="service-meta" id="svc-quality-meta">Port 21748</span>
+      <button class="test-btn" id="svc-quality-start" onclick="manageStackService('quality', 'start')">Start</button>
+      <button class="test-btn" id="svc-quality-restart" onclick="manageStackService('quality', 'restart')">Restart</button>
+    </div>
+  </div>
 </div>
 
 <!-- Tests -->
@@ -357,23 +397,23 @@ h3 { font-size: 0.85rem; color: var(--accent); margin: 12px 0 6px; }
       <span class="test-result" id="tr-blend">--</span>
       <button class="test-btn" onclick="runOne('blend')">Test</button>
     </div>
-    <div class="test-row" data-test="parler">
-      <span class="test-label">5. Parler-TTS Voice Design</span>
-      <span class="test-dot" id="td-parler"></span>
-      <span class="test-result" id="tr-parler">--</span>
-      <button class="test-btn" onclick="runOne('parler')">Test</button>
+    <div class="test-row" data-test="elevenlabs">
+      <span class="test-label">5. ElevenLabs Voice Design</span>
+      <span class="test-dot" id="td-elevenlabs"></span>
+      <span class="test-result" id="tr-elevenlabs">--</span>
+      <button class="test-btn" onclick="runOne('elevenlabs')">Test</button>
     </div>
-    <div class="test-row" data-test="ref_design">
-      <span class="test-label">6. Design with Reference Audio</span>
-      <span class="test-dot" id="td-ref_design"></span>
-      <span class="test-result" id="tr-ref_design">--</span>
-      <button class="test-btn" onclick="runOne('ref_design')">Test</button>
+    <div class="test-row" data-test="el_synthesize">
+      <span class="test-label">6. ElevenLabs Synthesize</span>
+      <span class="test-dot" id="td-el_synthesize"></span>
+      <span class="test-result" id="tr-el_synthesize">--</span>
+      <button class="test-btn" onclick="runOne('el_synthesize')">Test</button>
     </div>
-    <div class="test-row" data-test="smart_design">
-      <span class="test-label">7. Smart Design (quality self-analysis)</span>
-      <span class="test-dot" id="td-smart_design"></span>
-      <span class="test-result" id="tr-smart_design">--</span>
-      <button class="test-btn" onclick="runOne('smart_design')">Test</button>
+    <div class="test-row" data-test="el_create_voice">
+      <span class="test-label">7. ElevenLabs Create Voice</span>
+      <span class="test-dot" id="td-el_create_voice"></span>
+      <span class="test-result" id="tr-el_create_voice">--</span>
+      <button class="test-btn" onclick="runOne('el_create_voice')">Test</button>
     </div>
     <div class="test-row" data-test="voice_search">
       <span class="test-label">8. Voice Reference Search (YouTube)</span>
@@ -390,7 +430,7 @@ h3 { font-size: 0.85rem; color: var(--accent); margin: 12px 0 6px; }
 <!-- Interactive design -->
 <div class="card design-section">
   <h2>Interactive Voice Design</h2>
-  <h3>Text-Prompted (Parler-TTS)</h3>
+  <h3>Text-Prompted (ElevenLabs)</h3>
   <textarea id="desc" rows="2" placeholder="Describe the voice: 'A warm female voice with a calm tone and slow pace'"></textarea>
   <div class="design-row">
     <input type="text" id="preview-text" value="Hello, this is a preview of the designed voice." />
@@ -405,7 +445,7 @@ h3 { font-size: 0.85rem; color: var(--accent); margin: 12px 0 6px; }
     <div class="search-progress-bar-wrap">
       <div class="search-progress-bar id-progress-bar" id="gen-bar"></div>
     </div>
-    <div class="search-progress-status" id="gen-progress-status">Loading Parler-TTS model...</div>
+    <div class="search-progress-status" id="gen-progress-status">Calling ElevenLabs API...</div>
   </div>
   <div class="preview-section hidden" id="preview-section">
     <audio id="preview-audio" controls></audio>
@@ -420,7 +460,7 @@ h3 { font-size: 0.85rem; color: var(--accent); margin: 12px 0 6px; }
       <input type="file" id="ref-file" accept="audio/*" />
       <button id="ref-upload-btn" onclick="uploadReference()" disabled>Extract Embedding</button>
       <button id="ref-palette-btn" onclick="addUploadToPalette()" disabled>Add to Palette</button>
-      <button id="ref-design-btn" onclick="designWithReference()" disabled>Generate with Description + Reference</button>
+      <button id="ref-design-btn" onclick="designWithReference()" disabled>Extract Embedding &amp; Save Profile</button>
     </div>
     <div class="ref-status" id="ref-status"></div>
     <audio class="ref-player hidden" id="ref-player" controls></audio>
@@ -428,19 +468,14 @@ h3 { font-size: 0.85rem; color: var(--accent); margin: 12px 0 6px; }
   </div>
 </div>
 
-<!-- Smart Design (with quality analysis) -->
+<!-- ElevenLabs Design + Quality Analysis -->
 <div class="card design-section">
-  <h2>Smart Design (Quality Self-Analysis)</h2>
-  <p style="font-size:0.8rem;color:var(--dim);margin-bottom:8px;">Generates voice audio and analyzes it with the quality server (Whisper ASR, UTMOS MOS, prosody). Retries if quality is below threshold.</p>
+  <h2>ElevenLabs Design + Quality Analysis</h2>
+  <p style="font-size:0.8rem;color:var(--dim);margin-bottom:8px;">Generates voice candidates via ElevenLabs, then analyzes the best with the quality server (Whisper ASR, UTMOS MOS, prosody).</p>
   <textarea id="smart-desc" rows="2" placeholder="Describe the voice: 'A deep, authoritative male voice with clear enunciation'"></textarea>
   <div class="design-row">
     <input type="text" id="smart-preview-text" value="The quick brown fox jumps over the lazy dog." />
-    <label style="font-size:0.75rem;color:var(--dim);white-space:nowrap;">Max tries:
-      <select id="smart-max-attempts" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px;">
-        <option value="1">1</option><option value="2">2</option><option value="3" selected>3</option><option value="5">5</option>
-      </select>
-    </label>
-    <button class="gen-btn" id="smart-gen-btn" onclick="smartGenerate()">Smart Generate</button>
+    <button class="gen-btn" id="smart-gen-btn" onclick="smartGenerate()">Design + Analyze</button>
   </div>
   <div class="gen-progress hidden" id="smart-progress">
     <div class="identify-steps">
@@ -625,8 +660,91 @@ h3 { font-size: 0.85rem; color: var(--accent); margin: 12px 0 6px; }
   </div>
 </div>
 
+<!-- Voice Crafting Studio -->
+<div class="card" id="crafting-card">
+  <h2>Voice Crafting Studio</h2>
+  <p style="font-size:0.8rem;color:var(--dim);margin-bottom:10px;">
+    Iterative, guided voice design. Walk through voice quality axes step by step, hearing contrasting samples at each stage.
+  </p>
+
+  <!-- Mode selection -->
+  <div id="wb-craft-modes">
+    <div style="display:flex;gap:8px;margin-bottom:10px;">
+      <button class="gen-btn" onclick="wbCraftStart('guided')">Guided Crafting</button>
+      <button class="gen-btn" onclick="wbCraftShowArchetypes()">From Archetype</button>
+      <button class="gen-btn" onclick="wbCraftShowFreeform()">Describe Voice</button>
+    </div>
+  </div>
+
+  <!-- Archetype grid -->
+  <div id="wb-craft-archetypes" class="hidden" style="margin-bottom:10px;">
+    <h3>Select Archetype</h3>
+    <div id="wb-craft-archetype-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;"></div>
+  </div>
+
+  <!-- Freeform input -->
+  <div id="wb-craft-freeform" class="hidden" style="margin-bottom:10px;">
+    <h3>Describe Your Voice</h3>
+    <textarea id="wb-craft-freeform-input" rows="2" style="width:100%;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.85rem;margin-bottom:6px;" placeholder="e.g. A warm, deep male voice..."></textarea>
+    <button class="gen-btn" onclick="wbCraftStartFreeform()">Interpret & Start</button>
+  </div>
+
+  <!-- Progress bar -->
+  <div id="wb-craft-progress" class="hidden" style="display:flex;gap:4px;align-items:center;margin-bottom:10px;flex-wrap:wrap;"></div>
+
+  <!-- Axis exploration -->
+  <div id="wb-craft-axis" class="hidden">
+    <div style="margin-bottom:8px;">
+      <span id="wb-craft-axis-counter" style="font-size:0.72rem;color:#a882ff;font-weight:600;text-transform:uppercase;"></span>
+      <h3 id="wb-craft-axis-label" style="margin:2px 0;"></h3>
+      <p id="wb-craft-axis-desc" style="font-size:0.8rem;color:var(--dim);margin:0;"></p>
+    </div>
+    <div id="wb-craft-samples" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px;"></div>
+    <div style="display:flex;gap:6px;margin-bottom:8px;">
+      <button class="test-btn" id="wb-craft-back" onclick="wbCraftBack()">Back</button>
+      <button class="test-btn" onclick="wbCraftSkip()">Skip</button>
+      <button class="test-btn" onclick="wbCraftRegen()">Regenerate</button>
+    </div>
+    <div id="wb-craft-cumulative" class="hidden" style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:8px;font-size:0.8rem;">
+      <span style="font-weight:600;color:#a882ff;font-size:0.72rem;text-transform:uppercase;">Voice so far: </span>
+      <span id="wb-craft-cumul-text"></span>
+    </div>
+  </div>
+
+  <!-- Summary -->
+  <div id="wb-craft-summary" class="hidden">
+    <h3>Voice Summary</h3>
+    <div id="wb-craft-traits" style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px;"></div>
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:10px;margin-bottom:10px;">
+      <span style="font-weight:600;color:#a882ff;font-size:0.72rem;text-transform:uppercase;display:block;margin-bottom:4px;">Final Description</span>
+      <p id="wb-craft-final-desc" style="font-size:0.85rem;line-height:1.5;margin:0;"></p>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <input id="wb-craft-save-name" placeholder="Profile name..." style="flex:1;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.85rem;" />
+      <button class="gen-btn" onclick="wbCraftSave()">Save to Profiles</button>
+    </div>
+  </div>
+
+  <div style="margin-top:8px;display:flex;align-items:center;gap:10px;">
+    <span id="wb-craft-status" style="font-size:0.8rem;color:var(--dim);flex:1;"></span>
+    <span id="wb-craft-api-count" style="font-size:0.72rem;color:var(--dim);padding:2px 8px;background:var(--bg);border-radius:10px;"></span>
+  </div>
+</div>
+
 <script>
 const API = 'http://127.0.0.1:21749';
+const WS_API = 'ws://127.0.0.1:21740';
+const REQUIRED_STACK_ENGINES = ['voice-designer', 'alignment', 'quality'];
+const ENGINE_PORTS = { 'voice-designer': 21749, alignment: 21747, quality: 21748 };
+const ENGINE_DOTS = { 'voice-designer': 'dot-designer', alignment: 'dot-align', quality: 'dot-quality' };
+const ENGINE_LABELS = { 'voice-designer': 'Voice Designer', alignment: 'Alignment', quality: 'Quality' };
+const stackState = { ws: null, 'voice-designer': null, alignment: null, quality: null };
+let stackWs = null;
+let stackWsReconnectTimer = null;
+let stackWsPollTimer = null;
+let stackAutoStartAttempted = false;
+const stackManageInflight = new Set();
+const stackManageWaiters = new Map();
 let refEmbedding = null;
 let refPcmB64 = null;
 let refSampleRate = 16000;
@@ -642,23 +760,297 @@ function tlog(msg, cls='info') {
 
 function setDot(id, state) { document.getElementById(id).className = 'test-dot ' + state; }
 function setResult(id, txt) { document.getElementById(id).textContent = txt; }
+function setStackDot(id, state) { document.getElementById(id).className = 'dot ' + state; }
+
+function setManagerStatus(text, tone = '') {
+  const el = document.getElementById('service-manager-status');
+  el.textContent = text;
+  el.className = tone ? `service-manager ${tone}` : 'service-manager';
+}
+
+function isWsManagerConnected() {
+  return !!stackWs && stackWs.readyState === WebSocket.OPEN;
+}
+
+function formatUptime(secs) {
+  if (!secs) return 'just started';
+  if (secs < 60) return `${secs}s up`;
+  if (secs < 3600) return `${Math.floor(secs / 60)}m up`;
+  return `${Math.floor(secs / 3600)}h ${Math.floor((secs % 3600) / 60)}m up`;
+}
+
+function updateStackSummary() {
+  const states = [stackState.ws, stackState.alignment, stackState.quality, stackState['voice-designer']];
+  const known = states.filter((value) => value !== null);
+  const up = states.filter(Boolean).length;
+  const statusEl = document.getElementById('stack-status');
+  if (!known.length) {
+    statusEl.textContent = 'Checking...';
+    statusEl.style.color = 'var(--warn)';
+    return;
+  }
+  statusEl.textContent = `${up}/4 up`;
+  statusEl.style.color = up === 4 ? 'var(--pass)' : up > 0 ? 'var(--warn)' : 'var(--fail)';
+}
+
+function renderServiceRow(engine, online, metaText = null) {
+  const stateEl = document.getElementById(`svc-${engine}-state`);
+  const metaEl = document.getElementById(`svc-${engine}-meta`);
+  const startBtn = document.getElementById(`svc-${engine}-start`);
+  const restartBtn = document.getElementById(`svc-${engine}-restart`);
+  const busy = stackManageInflight.has(engine);
+  const wsConnected = isWsManagerConnected();
+
+  stateEl.className = `model-state ${busy ? 'loading' : online ? 'ready' : 'error'}`;
+  stateEl.textContent = busy ? 'starting' : online ? 'online' : 'offline';
+  metaEl.textContent = metaText || `Port ${ENGINE_PORTS[engine]}`;
+  startBtn.disabled = !wsConnected || busy || online === true;
+  restartBtn.disabled = !wsConnected || busy || online !== true;
+}
+
+function setDesignerOfflineState(message = 'Voice Designer server offline') {
+  const encoderState = document.getElementById('ms-encoder-state');
+  const encoderStage = document.getElementById('ms-encoder-stage');
+  const encoderProgress = document.getElementById('ms-encoder-progress');
+  const elevenState = document.getElementById('ms-elevenlabs-state');
+  const elevenStage = document.getElementById('ms-elevenlabs-stage');
+  const geminiState = document.getElementById('ms-gemini-state');
+  const geminiStage = document.getElementById('ms-gemini-stage');
+  const preloadBtn = document.getElementById('preload-btn');
+
+  encoderState.className = 'model-state idle';
+  encoderState.textContent = 'offline';
+  encoderStage.textContent = message;
+  encoderProgress.style.width = '0%';
+  elevenState.className = 'model-state idle';
+  elevenState.textContent = 'offline';
+  elevenStage.textContent = message;
+  geminiState.className = 'model-state idle';
+  geminiState.textContent = 'offline';
+  geminiStage.textContent = message;
+  preloadBtn.disabled = true;
+  preloadBtn.textContent = 'Start Designer First';
+}
+
+function applyServerStats(servers) {
+  const statsByEngine = new Map((servers || []).map((entry) => [entry.engine, entry]));
+
+  stackState.ws = true;
+  setStackDot('dot-ws', 'up');
+
+  for (const engine of REQUIRED_STACK_ENGINES) {
+    const stats = statsByEngine.get(engine);
+    const online = !!stats?.online;
+    stackState[engine] = online;
+    setStackDot(ENGINE_DOTS[engine], online ? 'up' : 'down');
+    const meta = online
+      ? `Port ${ENGINE_PORTS[engine]}${stats?.pid ? ` • PID ${stats.pid}` : ''} • ${formatUptime(stats?.uptime_secs || 0)}`
+      : `Port ${ENGINE_PORTS[engine]} • offline`;
+    renderServiceRow(engine, online, meta);
+  }
+
+  updateStackSummary();
+
+  if (stackState['voice-designer']) {
+    document.getElementById('preload-btn').disabled = false;
+    document.getElementById('preload-btn').textContent = modelPollTimer ? 'Loading...' : 'Preload Encoder';
+    pollModelStatus();
+    checkServiceStatus();
+  } else {
+    setDesignerOfflineState('Voice Designer server offline');
+  }
+
+  if (!stackAutoStartAttempted) {
+    const missing = REQUIRED_STACK_ENGINES.filter((engine) => !stackState[engine]);
+    if (missing.length && isWsManagerConnected()) {
+      stackAutoStartAttempted = true;
+      startRequiredServices({ automatic: true }).catch((error) => {
+        setManagerStatus(`Automatic startup failed: ${error.message}`, 'error');
+      });
+    }
+  }
+}
+
+function scheduleStackReconnect() {
+  if (stackWsReconnectTimer) return;
+  stackWsReconnectTimer = setTimeout(() => {
+    stackWsReconnectTimer = null;
+    connectStackManager();
+  }, 3000);
+}
+
+function connectStackManager() {
+  if (stackWs && (stackWs.readyState === WebSocket.OPEN || stackWs.readyState === WebSocket.CONNECTING)) return;
+
+  setManagerStatus('Connecting to WS server manager...');
+
+  try {
+    stackWs = new WebSocket(WS_API);
+  } catch (error) {
+    stackState.ws = false;
+    setStackDot('dot-ws', 'down');
+    updateStackSummary();
+    setManagerStatus(`WS server manager unavailable: ${error.message}`, 'error');
+    scheduleStackReconnect();
+    return;
+  }
+
+  stackWs.onopen = () => {
+    stackState.ws = true;
+    setStackDot('dot-ws', 'up');
+    updateStackSummary();
+    setManagerStatus('WS server manager connected.', 'ready');
+    if (stackWsPollTimer) clearInterval(stackWsPollTimer);
+    stackWsPollTimer = setInterval(requestServerStats, 5000);
+    requestServerStats();
+  };
+
+  stackWs.onmessage = (event) => {
+    let payload = null;
+    try {
+      payload = JSON.parse(event.data);
+    } catch {
+      return;
+    }
+
+    if (payload.type === 'server_stats') {
+      applyServerStats(payload.servers || []);
+      return;
+    }
+
+    if (payload.type === 'server_manage_result') {
+      const key = `${payload.engine}:${payload.action}`;
+      const waiter = stackManageWaiters.get(key);
+      stackManageInflight.delete(payload.engine);
+      stackManageWaiters.delete(key);
+      renderServiceRow(payload.engine, stackState[payload.engine], `Port ${ENGINE_PORTS[payload.engine]} • ${payload.success ? 'refreshing…' : payload.error || 'request failed'}`);
+      if (payload.success) {
+        setManagerStatus(`${ENGINE_LABELS[payload.engine]} ${payload.action} requested. Refreshing status...`, 'ready');
+        setTimeout(requestServerStats, 800);
+        setTimeout(requestServerStats, 2500);
+        waiter?.resolve(payload);
+      } else {
+        setManagerStatus(`Failed to ${payload.action} ${ENGINE_LABELS[payload.engine]}: ${payload.error || 'unknown error'}`, 'error');
+        waiter?.reject(new Error(payload.error || `Failed to ${payload.action} ${payload.engine}`));
+      }
+      return;
+    }
+
+    if (payload.type === 'error') {
+      setManagerStatus(payload.message || 'WS server manager error.', 'error');
+    }
+  };
+
+  stackWs.onclose = () => {
+    stackState.ws = false;
+    setStackDot('dot-ws', 'down');
+    updateStackSummary();
+    if (stackWsPollTimer) {
+      clearInterval(stackWsPollTimer);
+      stackWsPollTimer = null;
+    }
+    setManagerStatus('WS server manager offline. Start `cargo run --bin web-vox-server`.', 'error');
+    for (const engine of REQUIRED_STACK_ENGINES) {
+      renderServiceRow(engine, !!stackState[engine]);
+    }
+    scheduleStackReconnect();
+  };
+
+  stackWs.onerror = () => {
+    setManagerStatus('WS server manager connection failed.', 'error');
+  };
+}
+
+function requestServerStats() {
+  if (!isWsManagerConnected()) return;
+  stackWs.send(JSON.stringify({ type: 'get_server_stats' }));
+}
+
+async function manageStackService(engine, action) {
+  if (!isWsManagerConnected()) {
+    throw new Error('WS server manager is offline.');
+  }
+
+  const key = `${engine}:${action}`;
+  if (stackManageWaiters.has(key)) {
+    return stackManageWaiters.get(key).promise;
+  }
+
+  let resolveFn;
+  let rejectFn;
+  const promise = new Promise((resolve, reject) => {
+    resolveFn = resolve;
+    rejectFn = reject;
+  });
+
+  stackManageWaiters.set(key, { promise, resolve: resolveFn, reject: rejectFn });
+  stackManageInflight.add(engine);
+  renderServiceRow(engine, !!stackState[engine], `Port ${ENGINE_PORTS[engine]} • ${action} requested...`);
+  setManagerStatus(`${action === 'restart' ? 'Restarting' : 'Starting'} ${ENGINE_LABELS[engine]}...`);
+  stackWs.send(JSON.stringify({ type: 'manage_server', engine, action }));
+  return promise;
+}
+
+async function startRequiredServices(options = {}) {
+  const automatic = !!options.automatic;
+  if (!isWsManagerConnected()) {
+    throw new Error('WS server manager is offline.');
+  }
+
+  const missing = REQUIRED_STACK_ENGINES.filter((engine) => !stackState[engine]);
+  if (!missing.length) {
+    setManagerStatus('All required phase 3 services are already online.', 'ready');
+    return;
+  }
+
+  setManagerStatus(`${automatic ? 'Automatic startup' : 'Starting required services'}: ${missing.map((engine) => ENGINE_LABELS[engine]).join(', ')}.`);
+  for (const engine of missing) {
+    await manageStackService(engine, 'start');
+  }
+}
+
+async function refreshServiceStatus() {
+  connectStackManager();
+  requestServerStats();
+  await checkStack();
+  if (stackState['voice-designer']) {
+    await Promise.allSettled([checkServiceStatus(), pollModelStatus()]);
+  }
+}
 
 // ── Stack check ──
 async function checkStack() {
+  connectStackManager();
   try {
     const r = await fetch(API + '/stack_status', { signal: AbortSignal.timeout(5000) });
     const d = await r.json();
-    const dots = { 'dot-ws': d.ws, 'dot-align': d.alignment, 'dot-quality': d.quality, 'dot-designer': d.designer };
-    let up = 0;
-    for (const [id, ok] of Object.entries(dots)) {
-      document.getElementById(id).className = 'dot ' + (ok ? 'up' : 'down');
-      if (ok) up++;
+    stackState['voice-designer'] = !!d.designer;
+    stackState.alignment = !!d.alignment;
+    stackState.quality = !!d.quality;
+    if (!isWsManagerConnected()) {
+      stackState.ws = !!d.ws;
+      setStackDot('dot-ws', d.ws ? 'up' : 'down');
     }
-    document.getElementById('stack-status').textContent = `${up}/4 up`;
-    document.getElementById('stack-status').style.color = up === 4 ? 'var(--pass)' : up > 0 ? 'var(--warn)' : 'var(--fail)';
+    setStackDot('dot-align', d.alignment ? 'up' : 'down');
+    setStackDot('dot-quality', d.quality ? 'up' : 'down');
+    setStackDot('dot-designer', d.designer ? 'up' : 'down');
+    renderServiceRow('alignment', !!d.alignment, `Port 21747${d.alignment ? ' • reachable' : ' • offline'}`);
+    renderServiceRow('quality', !!d.quality, `Port 21748${d.quality ? ' • reachable' : ' • offline'}`);
+    renderServiceRow('voice-designer', !!d.designer, `Port 21749${d.designer ? ' • reachable' : ' • offline'}`);
+    updateStackSummary();
   } catch {
-    document.getElementById('stack-status').textContent = 'Error';
-    document.getElementById('stack-status').style.color = 'var(--fail)';
+    if (!isWsManagerConnected()) {
+      stackState['voice-designer'] = false;
+      stackState.alignment = false;
+      stackState.quality = false;
+      setStackDot('dot-align', 'down');
+      setStackDot('dot-quality', 'down');
+      setStackDot('dot-designer', 'down');
+      renderServiceRow('alignment', false);
+      renderServiceRow('quality', false);
+      renderServiceRow('voice-designer', false);
+      updateStackSummary();
+    }
   }
 }
 checkStack();
@@ -668,6 +1060,11 @@ setInterval(checkStack, 15000);
 let modelPollTimer = null;
 
 async function pollModelStatus() {
+  if (!stackState['voice-designer']) {
+    setDesignerOfflineState('Voice Designer server offline');
+    return;
+  }
+
   try {
     const r = await fetch(API + '/model_status', { signal: AbortSignal.timeout(3000) });
     const d = await r.json();
@@ -700,18 +1097,43 @@ async function pollModelStatus() {
       clearInterval(modelPollTimer);
       modelPollTimer = null;
       document.getElementById('preload-btn').disabled = false;
-      document.getElementById('preload-btn').textContent = 'Preload All Models';
+      document.getElementById('preload-btn').textContent = 'Preload Encoder';
     }
-  } catch { /* ignore */ }
+  } catch {
+    document.getElementById('ms-encoder-state').className = 'model-state idle';
+    document.getElementById('ms-encoder-state').textContent = 'starting';
+    document.getElementById('ms-encoder-stage').textContent = 'Waiting for Voice Designer model status...';
+  }
 }
 
-// Gemini status check (uses /health endpoint)
-async function checkGeminiStatus() {
-  const stateEl = document.getElementById('ms-gemini-state');
-  const stageEl = document.getElementById('ms-gemini-stage');
+// ElevenLabs + Gemini status check (uses /health endpoint)
+async function checkServiceStatus() {
+  if (!stackState['voice-designer']) {
+    setDesignerOfflineState('Voice Designer server offline');
+    return;
+  }
+
   try {
-    const r = await fetch(API + '/health', { signal: AbortSignal.timeout(3000) });
+    const r = await fetch(API + '/health', { signal: AbortSignal.timeout(5000) });
     const d = await r.json();
+
+    // ElevenLabs
+    const elStateEl = document.getElementById('ms-elevenlabs-state');
+    const elStageEl = document.getElementById('ms-elevenlabs-stage');
+    const el = d.elevenlabs || {};
+    if (el.available) {
+      elStateEl.className = 'model-state ready';
+      elStateEl.textContent = 'connected';
+      elStageEl.textContent = `${el.tier} — ${(el.remaining || 0).toLocaleString()} chars remaining`;
+    } else {
+      elStateEl.className = 'model-state error';
+      elStateEl.textContent = 'off';
+      elStageEl.textContent = el.error || 'No ELEVEN_LABS_API_KEY in .env';
+    }
+
+    // Gemini
+    const stateEl = document.getElementById('ms-gemini-state');
+    const stageEl = document.getElementById('ms-gemini-stage');
     const gs = d.gemini || 'not_configured';
     if (gs === 'connected') {
       stateEl.className = 'model-state ready';
@@ -727,24 +1149,36 @@ async function checkGeminiStatus() {
       stageEl.textContent = 'No GEMINI_API_KEY in .env';
     }
   } catch {
-    stateEl.className = 'model-state idle';
-    stateEl.textContent = '?';
-    stageEl.textContent = 'Server unreachable';
+    document.getElementById('ms-elevenlabs-state').className = 'model-state idle';
+    document.getElementById('ms-elevenlabs-state').textContent = 'starting';
+    document.getElementById('ms-elevenlabs-stage').textContent = 'Waiting for Voice Designer health...';
+    document.getElementById('ms-gemini-state').className = 'model-state idle';
+    document.getElementById('ms-gemini-state').textContent = 'starting';
+    document.getElementById('ms-gemini-stage').textContent = 'Waiting for Voice Designer health...';
   }
 }
 
 // Initial checks
 pollModelStatus();
-checkGeminiStatus();
+checkServiceStatus();
 
 async function preloadModels() {
   const btn = document.getElementById('preload-btn');
+  if (!stackState['voice-designer']) {
+    try {
+      await startRequiredServices();
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    } catch (error) {
+      setManagerStatus(`Cannot preload models: ${error.message}`, 'error');
+      return;
+    }
+  }
   btn.disabled = true;
   btn.textContent = 'Loading...';
 
   try {
     await fetch(API + '/preload', { method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ models: ['parler', 'encoder'] }) });
+      body: JSON.stringify({ models: ['encoder'] }) });
   } catch (e) {
     btn.disabled = false;
     btn.textContent = 'Preload All Models';
@@ -818,47 +1252,49 @@ async function designWithReference() {
   const file = refFileInput.files[0];
   if (!file) { alert('Select an audio file first'); return; }
 
-  const desc = document.getElementById('desc').value.trim();
-  const previewText = document.getElementById('preview-text').value.trim();
-  if (!desc) { alert('Enter a voice description above'); return; }
-
   const statusEl = document.getElementById('ref-status');
   const genBtn = document.getElementById('ref-design-btn');
   genBtn.disabled = true;
-  statusEl.textContent = 'Decoding audio...';
+  statusEl.textContent = 'Extracting embedding from reference...';
 
   try {
     const pcm = await fileToF32PCM(file);
     const pcmB64 = btoa(String.fromCharCode(...new Uint8Array(pcm.buffer)));
-    statusEl.textContent = 'Sending to server (design + reference extraction)...';
 
-    const r = await fetch(API + '/design_with_reference', { method: 'POST',
+    // Extract embedding
+    const r = await fetch(API + '/extract_embedding', { method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        description: desc,
-        preview_text: previewText,
-        reference_audio_base64: pcmB64,
-        reference_sample_rate: refSampleRate,
+        audio_base64: pcmB64,
+        sample_rate: refSampleRate,
       }),
-      signal: AbortSignal.timeout(300000) });
+      signal: AbortSignal.timeout(60000) });
     const d = await r.json();
-
     if (!d.success) throw new Error(d.error);
 
-    // Play the generated audio
-    const raw = atob(d.audio_base64);
-    const audioArr = new Float32Array(new Uint8Array(raw.length).map((_,i)=>raw.charCodeAt(i)).buffer);
-    const wav = pcmToWav(audioArr, d.sample_rate);
-    const previewAudio = document.getElementById('preview-audio');
-    previewAudio.src = URL.createObjectURL(wav);
-    document.getElementById('preview-section').classList.remove('hidden');
-    document.getElementById('gen-status').textContent = `Generated ${d.duration_ms?.toFixed(0)}ms @ ${d.sample_rate}Hz (ref: ${d.reference_embedding_dimensions}D embedding)`;
-
-    refEmbedding = d.reference_embedding;
+    refEmbedding = d.embedding;
     const infoEl = document.getElementById('ref-embedding-info');
-    infoEl.textContent = `Reference embedding: ${d.reference_embedding_dimensions} dimensions`;
+    infoEl.textContent = `Reference embedding: ${d.dimensions}D (method: ${d.method || 'auto'})`;
     infoEl.classList.remove('hidden');
-    statusEl.textContent = 'Design with reference complete.';
+
+    // Save as a voice profile
+    const profileName = 'ref-' + file.name.replace(/\.[^.]+$/, '').substring(0, 20) + '-' + Date.now().toString(36);
+    const sr = await fetch(API + '/save_profile', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: profileName,
+        description: 'Extracted from reference audio: ' + file.name,
+        embedding: d.embedding,
+        audio_base64: pcmB64,
+        sample_rate: refSampleRate,
+      }),
+      signal: AbortSignal.timeout(30000) });
+    const sd = await sr.json();
+    if (sd.success) {
+      statusEl.textContent = `Embedding extracted (${d.dimensions}D) and saved as profile "${profileName}".`;
+    } else {
+      statusEl.textContent = `Embedding extracted (${d.dimensions}D). Profile save failed: ${sd.error}`;
+    }
   } catch (e) {
     statusEl.textContent = `Error: ${e}`;
   }
@@ -935,77 +1371,102 @@ tests.blend = async () => {
   tlog(`Blend: ${d.dimensions}D, normalized weights ${d.weights_normalized.map(w=>w.toFixed(2))}`, 'pass');
 };
 
-tests.parler = async () => {
-  setDot('td-parler', 'running'); setResult('tr-parler', 'Loading Parler-TTS...');
-  tlog('Testing Parler-TTS voice design...');
+tests.elevenlabs = async () => {
+  setDot('td-elevenlabs', 'running'); setResult('tr-elevenlabs', 'Calling ElevenLabs...');
+  tlog('Testing ElevenLabs voice design...');
 
-  // Start polling model status during load
-  if (!modelPollTimer) modelPollTimer = setInterval(pollModelStatus, 1000);
-
-  const r = await fetch(API + '/design', { method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ description: 'A calm, clear female voice', preview_text: 'Hello world' }),
-    signal: AbortSignal.timeout(300000) });
+  const r = await fetch(API + '/elevenlabs/design', { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ description: 'A calm, clear female voice with a warm tone', preview_text: 'Hello world, this is a test of the voice design system.' }),
+    signal: AbortSignal.timeout(60000) });
   const d = await r.json();
   if (!d.success) throw new Error(d.error);
-  setDot('td-parler', 'pass'); setResult('tr-parler', `OK (${d.duration_ms?.toFixed(0)}ms audio)`);
-  tlog(`Parler-TTS: generated ${d.duration_ms?.toFixed(0)}ms audio`, 'pass');
+  const count = (d.candidates || []).length;
+  const hasAudio = (d.candidates || []).some(c => c.audio_base64);
+  setDot('td-elevenlabs', 'pass'); setResult('tr-elevenlabs', `OK (${count} candidates, audio: ${hasAudio})`);
+  tlog(`ElevenLabs: ${count} voice candidates generated`, 'pass');
+};
 
-  // Final status poll
+tests.el_synthesize = async () => {
+  setDot('td-el_synthesize', 'running'); setResult('tr-el_synthesize', 'Design → Create → Synthesize...');
+  tlog('Testing ElevenLabs full pipeline (design → create voice → synthesize)...');
+
+  // Step 1: Design a voice to get a generated_voice_id
+  const dr = await fetch(API + '/elevenlabs/design', { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({
+      description: 'A warm, friendly male voice with a calm, natural tone',
+      preview_text: 'Testing the full voice creation and synthesis pipeline.',
+    }),
+    signal: AbortSignal.timeout(60000) });
+  const dd = await dr.json();
+  if (!dd.success) throw new Error('Design failed: ' + (dd.error || 'unknown'));
+  if (!dd.candidates || !dd.candidates.length) throw new Error('No candidates returned');
+
+  const genVoiceId = dd.candidates[0].generated_voice_id;
+  if (!genVoiceId) throw new Error('No generated_voice_id in candidate');
+
+  // Step 2: Create a persistent voice from the preview
+  const testName = 'wb-synth-test-' + Date.now();
+  const cr = await fetch(API + '/elevenlabs/create_voice', { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({
+      name: testName,
+      description: 'A warm, friendly male voice created for synthesis testing purposes',
+      generated_voice_id: genVoiceId,
+    }),
+    signal: AbortSignal.timeout(30000) });
+  const cd = await cr.json();
+  if (!cd.success) throw new Error('Create voice failed: ' + (cd.error || 'unknown'));
+
+  // Step 3: Synthesize with the real voice ID
+  const sr = await fetch(API + '/elevenlabs/synthesize', { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({
+      text: 'Hello, this is a synthesis test using a designed voice.',
+      voice_id: cd.voice_id,
+    }),
+    signal: AbortSignal.timeout(60000) });
+  const sd = await sr.json();
+  if (!sd.success) throw new Error('Synthesize failed: ' + (sd.error || 'unknown'));
+  if (!sd.audio_base64) throw new Error('No audio in synthesize response');
+
+  setDot('td-el_synthesize', 'pass');
+  setResult('tr-el_synthesize', `OK (${sd.duration_ms?.toFixed(0)}ms, ${sd.sample_rate}Hz)`);
+  tlog(`ElevenLabs full pipeline: design → create "${testName}" → synth ${sd.duration_ms?.toFixed(0)}ms @ ${sd.sample_rate}Hz`, 'pass');
   await pollModelStatus();
 };
 
-tests.ref_design = async () => {
-  setDot('td-ref_design', 'running'); setResult('tr-ref_design', 'Running...');
-  tlog('Testing design with reference audio...');
+tests.el_create_voice = async () => {
+  setDot('td-el_create_voice', 'running'); setResult('tr-el_create_voice', 'Designing + creating voice...');
+  tlog('Testing ElevenLabs create voice from preview...');
 
-  // Create synthetic reference audio
-  const pcm = new Float32Array(16000);
-  for (let i = 0; i < pcm.length; i++) pcm[i] = Math.sin(i * 0.1 + Math.sin(i * 0.01) * 2) * 0.3;
-  const pcmB64 = btoa(String.fromCharCode(...new Uint8Array(pcm.buffer)));
-
-  if (!modelPollTimer) modelPollTimer = setInterval(pollModelStatus, 1000);
-
-  const r = await fetch(API + '/design_with_reference', { method: 'POST', headers: {'Content-Type':'application/json'},
+  // Design a voice to get a generated_voice_id
+  const dr = await fetch(API + '/elevenlabs/design', { method: 'POST', headers: {'Content-Type':'application/json'},
     body: JSON.stringify({
-      description: 'A warm, friendly male voice',
-      preview_text: 'Testing reference design',
-      reference_audio_base64: pcmB64,
-      reference_sample_rate: 16000,
+      description: 'A clear, articulate female voice with a professional tone',
+      preview_text: 'Testing voice creation from a designed preview sample.',
     }),
-    signal: AbortSignal.timeout(300000) });
-  const d = await r.json();
-  if (!d.success) throw new Error(d.error);
-  if (!d.reference_embedding || !d.reference_embedding.length) throw new Error('No embedding returned');
+    signal: AbortSignal.timeout(60000) });
+  const dd = await dr.json();
+  if (!dd.success) throw new Error('Design failed: ' + (dd.error || 'unknown'));
+  if (!dd.candidates || !dd.candidates.length) throw new Error('No candidates returned');
 
-  setDot('td-ref_design', 'pass');
-  setResult('tr-ref_design', `OK (${d.duration_ms?.toFixed(0)}ms, ${d.reference_embedding_dimensions}D emb)`);
-  tlog(`Design+ref: ${d.duration_ms?.toFixed(0)}ms audio, ${d.reference_embedding_dimensions}D embedding`, 'pass');
-  await pollModelStatus();
-};
+  const voiceId = dd.candidates[0].generated_voice_id;
+  if (!voiceId) throw new Error('No generated_voice_id in candidate');
 
-tests.smart_design = async () => {
-  setDot('td-smart_design', 'running'); setResult('tr-smart_design', 'Generating + analyzing...');
-  tlog('Testing smart design with quality self-analysis...');
-
-  if (!modelPollTimer) modelPollTimer = setInterval(pollModelStatus, 1000);
-
-  const r = await fetch(API + '/design_smart', { method: 'POST', headers: {'Content-Type':'application/json'},
+  // Create a persistent voice from the preview
+  const testName = 'wb-test-' + Date.now();
+  const cr = await fetch(API + '/elevenlabs/create_voice', { method: 'POST', headers: {'Content-Type':'application/json'},
     body: JSON.stringify({
-      description: 'A clear, articulate female voice',
-      preview_text: 'Hello world',
-      max_attempts: 2,
-      min_mos: 2.0,
+      name: testName,
+      description: 'Test voice created by workbench',
+      generated_voice_id: voiceId,
     }),
-    signal: AbortSignal.timeout(300000) });
-  const d = await r.json();
-  if (!d.success) throw new Error(d.error);
+    signal: AbortSignal.timeout(30000) });
+  const cd = await cr.json();
+  if (!cd.success) throw new Error('Create voice failed: ' + (cd.error || 'unknown'));
+  if (!cd.voice_id) throw new Error('No voice_id returned');
 
-  const q = d.quality || {};
-  const mos = q.overall_mos ? q.overall_mos.toFixed(2) : 'N/A';
-  const attempts = d.total_attempts || 1;
-  setDot('td-smart_design', 'pass');
-  setResult('tr-smart_design', `OK (MOS:${mos}, ${attempts} attempt${attempts>1?'s':''})`);
-  tlog(`Smart design: MOS=${mos}, ${attempts} attempt(s), ${d.duration_ms?.toFixed(0)}ms audio`, 'pass');
+  setDot('td-el_create_voice', 'pass');
+  setResult('tr-el_create_voice', `OK (voice: ${cd.voice_id.substring(0,12)}...)`);
+  tlog(`ElevenLabs create voice: ID=${cd.voice_id}, name="${testName}"`, 'pass');
   await pollModelStatus();
 };
 
@@ -1044,7 +1505,7 @@ async function runAll() {
   tlog('=== Running all Phase 3 tests ===');
 
   let passed = 0, total = 0;
-  for (const name of ['health','profiles','encoder','blend','parler','ref_design','smart_design','voice_search']) {
+  for (const name of ['health','profiles','encoder','blend','elevenlabs','el_synthesize','el_create_voice','voice_search']) {
     total++;
     try { await tests[name](); passed++; }
     catch (e) {
@@ -1114,24 +1575,28 @@ async function generateVoice() {
 
   const prog = startGenProgress('gen',
     ['gen-step-model', 'gen-step-gen'],
-    ['Loading Parler-TTS model...', 'Generating audio...'],
+    ['Calling ElevenLabs API...', 'Generating audio...'],
     4000);
 
-  if (!modelPollTimer) modelPollTimer = setInterval(pollModelStatus, 1000);
-
   try {
-    const r = await fetch(API + '/design', { method: 'POST', headers: {'Content-Type':'application/json'},
+    const r = await fetch(API + '/elevenlabs/design', { method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ description: desc, preview_text: text }),
-      signal: AbortSignal.timeout(300000) });
+      signal: AbortSignal.timeout(60000) });
     const d = await r.json();
     if (!d.success) throw new Error(d.error);
+    // Use first candidate
+    const candidate = (d.candidates || [])[0];
+    if (!candidate || !candidate.audio_base64) throw new Error('No audio in response');
+    d.audio_base64 = candidate.audio_base64;
+    d.sample_rate = candidate.sample_rate || 24000;
 
     prog.complete();
     const raw = atob(d.audio_base64);
     const pcm = new Float32Array(new Uint8Array(raw.length).map((_,i)=>raw.charCodeAt(i)).buffer);
     const wav = pcmToWav(pcm, d.sample_rate);
     document.getElementById('preview-audio').src = URL.createObjectURL(wav);
-    status.textContent = `Generated ${d.duration_ms?.toFixed(0)}ms @ ${d.sample_rate}Hz`;
+    const durMs = pcm.length / d.sample_rate * 1000;
+    status.textContent = `Generated ${durMs.toFixed(0)}ms @ ${d.sample_rate}Hz`;
   } catch (e) {
     prog.fail();
     status.textContent = `Error: ${e}`;
@@ -1144,7 +1609,6 @@ async function generateVoice() {
 async function smartGenerate() {
   const desc = document.getElementById('smart-desc').value.trim();
   const text = document.getElementById('smart-preview-text').value.trim();
-  const maxAttempts = parseInt(document.getElementById('smart-max-attempts').value);
   if (!desc) { alert('Enter a voice description'); return; }
 
   const btn = document.getElementById('smart-gen-btn');
@@ -1152,25 +1616,40 @@ async function smartGenerate() {
   const qualityGrid = document.getElementById('smart-quality-grid');
   const attemptLog = document.getElementById('smart-attempt-log');
   btn.disabled = true; btn.textContent = 'Generating...';
-  status.textContent = `Generating with up to ${maxAttempts} attempts + quality analysis...`;
+  status.textContent = 'Designing voice via ElevenLabs + quality analysis...';
   document.getElementById('smart-preview-section').classList.remove('hidden');
   qualityGrid.classList.add('hidden');
   attemptLog.classList.add('hidden');
 
   const prog = startGenProgress('smart',
     ['smart-step-model', 'smart-step-gen', 'smart-step-quality'],
-    ['Loading model...', 'Generating audio...', 'Analyzing quality...'],
+    ['Calling ElevenLabs API...', 'Generating candidates...', 'Analyzing quality...'],
     5000);
 
-  if (!modelPollTimer) modelPollTimer = setInterval(pollModelStatus, 1000);
-
   try {
-    const r = await fetch(API + '/design_smart', { method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ description: desc, preview_text: text, max_attempts: maxAttempts, min_mos: 2.5 }),
-      signal: AbortSignal.timeout(300000) });
-    const d = await r.json();
+    // Step 1: Design voice via ElevenLabs
+    const dr = await fetch(API + '/elevenlabs/design', { method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ description: desc, preview_text: text }),
+      signal: AbortSignal.timeout(60000) });
+    const dd = await dr.json();
+    if (!dd.success) throw new Error(dd.error);
+    const candidate = (dd.candidates || [])[0];
+    if (!candidate || !candidate.audio_base64) throw new Error('No audio in ElevenLabs response');
+
+    // Step 2: Analyze quality via quality server
+    const qr = await fetch('http://127.0.0.1:21748/analyze', { method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        audio_base64: candidate.audio_base64,
+        sample_rate: candidate.sample_rate || 24000,
+        reference_text: text,
+        analyzers: ['asr', 'mos', 'signal'],
+      }),
+      signal: AbortSignal.timeout(60000) });
+    const qd = await qr.json();
+    const d = { success: true, audio_base64: candidate.audio_base64, sample_rate: candidate.sample_rate || 24000,
+      duration_ms: candidate.duration_ms, quality: qd, total_attempts: 1 };
+
     prog.complete();
-    if (!d.success) throw new Error(d.error);
 
     // Play audio
     const raw = atob(d.audio_base64);
@@ -2051,6 +2530,282 @@ function saveCloneAsSample() {
   // TODO: integrate with the main app's voice sample system
   alert('Clone sample saved! Use this WAV file with Chatterbox or XTTS for voice cloning.');
   downloadCloneSample();
+}
+
+// ── Voice Crafting Studio ──
+let wbCraftSession = null;
+let wbCraftAudio = null;
+
+function wbCraftStatus(msg) { document.getElementById('wb-craft-status').textContent = msg; }
+
+function wbCraftShow(section) {
+  ['wb-craft-modes','wb-craft-archetypes','wb-craft-freeform','wb-craft-axis','wb-craft-summary'].forEach(id => {
+    document.getElementById(id).classList.add('hidden');
+  });
+  if (section) document.getElementById(section).classList.remove('hidden');
+}
+
+function wbCraftUpdateProgress() {
+  const el = document.getElementById('wb-craft-progress');
+  if (!wbCraftSession) { el.classList.add('hidden'); return; }
+  el.classList.remove('hidden');
+  el.innerHTML = (wbCraftSession.progress || []).map(p => {
+    const size = p.category === 'primary' ? '12px' : p.category === 'tertiary' ? '8px' : '10px';
+    const colors = { done: 'var(--pass)', current: 'var(--accent)', skipped: '#555', pending: '#333' };
+    const bg = colors[p.state] || '#333';
+    const shadow = p.state === 'current' ? ';box-shadow:0 0 6px var(--accent);animation:pulse 1.2s infinite' : '';
+    return `<div title="${p.label}" style="width:${size};height:${size};border-radius:50%;background:${bg};transition:all 0.3s${shadow}"></div>`;
+  }).join('');
+  document.getElementById('wb-craft-api-count').textContent = `API calls: ${wbCraftSession.api_call_count || 0}`;
+}
+
+function wbCraftStopAudio() {
+  if (wbCraftAudio) { wbCraftAudio.pause(); wbCraftAudio = null; }
+  document.querySelectorAll('.wb-craft-sample').forEach(c => c.style.borderColor = 'var(--border)');
+}
+
+async function wbCraftStart(mode, archetypeId, freeformText) {
+  wbCraftStatus('Starting session...');
+  try {
+    const body = { mode };
+    if (archetypeId) body.archetype_id = archetypeId;
+    if (freeformText) body.freeform_text = freeformText;
+    const r = await fetch(API + '/crafting/start', {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body),
+      signal: AbortSignal.timeout(60000)
+    });
+    const d = await r.json();
+    if (d.success) {
+      wbCraftSession = d.session;
+      wbCraftUpdateProgress();
+      await wbCraftExplore();
+    } else {
+      wbCraftStatus('Failed: ' + (d.error || 'unknown'));
+    }
+  } catch (e) { wbCraftStatus('Error: ' + e); }
+}
+
+async function wbCraftShowArchetypes() {
+  wbCraftShow('wb-craft-archetypes');
+  try {
+    const r = await fetch(API + '/crafting/archetypes', { signal: AbortSignal.timeout(5000) });
+    const d = await r.json();
+    const grid = document.getElementById('wb-craft-archetype-grid');
+    grid.innerHTML = (d.archetypes || []).map(a =>
+      `<div onclick="wbCraftStart('archetype','${a.id}')" style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:10px;cursor:pointer;transition:border-color 0.2s;" onmouseover="this.style.borderColor='#a882ff'" onmouseout="this.style.borderColor='var(--border)'">
+        <div style="font-weight:600;font-size:0.85rem;margin-bottom:2px;">${a.label}</div>
+        <div style="font-size:0.72rem;color:var(--dim);">${a.description}</div>
+      </div>`
+    ).join('');
+  } catch (e) { wbCraftStatus('Failed to load archetypes: ' + e); }
+}
+
+function wbCraftShowFreeform() { wbCraftShow('wb-craft-freeform'); }
+
+async function wbCraftStartFreeform() {
+  const text = document.getElementById('wb-craft-freeform-input').value.trim();
+  if (!text) return;
+  await wbCraftStart('freeform', null, text);
+}
+
+async function wbCraftExplore() {
+  if (!wbCraftSession) return;
+  const ax = wbCraftSession.current_axis;
+  if (!ax) { await wbCraftFinish(); return; }
+
+  wbCraftShow('wb-craft-axis');
+  document.getElementById('wb-craft-axis-counter').textContent =
+    `Step ${wbCraftSession.current_axis_index + 1} of ${wbCraftSession.total_axes}`;
+  document.getElementById('wb-craft-axis-label').textContent = ax.label;
+  document.getElementById('wb-craft-axis-desc').textContent = ax.description;
+  document.getElementById('wb-craft-back').disabled = wbCraftSession.current_axis_index === 0;
+
+  const samplesEl = document.getElementById('wb-craft-samples');
+  samplesEl.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--dim);padding:20px;">Generating samples...</div>';
+  wbCraftStatus('Generating ' + ax.label + ' samples...');
+
+  try {
+    const r = await fetch(API + '/crafting/explore', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ session_id: wbCraftSession.session_id, axis_id: ax.id }),
+      signal: AbortSignal.timeout(120000)
+    });
+    const d = await r.json();
+    if (d.success) {
+      wbCraftSession = d.session;
+      wbCraftUpdateProgress();
+      wbCraftRenderSamples(d.samples);
+      wbCraftStatus('');
+    } else {
+      wbCraftStatus('Failed: ' + (d.error || 'unknown'));
+    }
+  } catch (e) { wbCraftStatus('Error: ' + e); }
+
+  // Update cumulative
+  if (wbCraftSession.cumulative_prompt) {
+    document.getElementById('wb-craft-cumulative').classList.remove('hidden');
+    document.getElementById('wb-craft-cumul-text').textContent = wbCraftSession.cumulative_prompt;
+  } else {
+    document.getElementById('wb-craft-cumulative').classList.add('hidden');
+  }
+}
+
+function wbCraftRenderSamples(samples) {
+  const el = document.getElementById('wb-craft-samples');
+  el.innerHTML = samples.map((s, i) => `
+    <div class="wb-craft-sample" id="wb-craft-s${i}" style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:10px;display:flex;flex-direction:column;gap:6px;transition:border-color 0.2s;">
+      <div style="font-size:0.7rem;color:var(--dim);text-transform:uppercase;">${s.label}</div>
+      <div style="font-weight:600;font-size:0.85rem;">${s.archetype_label}</div>
+      ${s.audio_base64 ? `<div style="display:flex;gap:4px;">
+        <button class="test-btn" onclick="wbCraftPlay(${i})">Play</button>
+        <button class="gen-btn" onclick="wbCraftSelect('${s.archetype_id}',${i})" style="font-size:0.75rem;padding:4px 10px;">Select</button>
+      </div>` : '<div style="font-size:0.75rem;color:var(--dim);font-style:italic;">No audio</div>'}
+    </div>
+  `).join('');
+  // Store samples for play
+  el._samples = samples;
+}
+
+function wbCraftPlay(idx) {
+  wbCraftStopAudio();
+  const samples = document.getElementById('wb-craft-samples')._samples;
+  if (!samples || !samples[idx] || !samples[idx].audio_base64) return;
+  const s = samples[idx];
+  const raw = atob(s.audio_base64);
+  const pcm = new Float32Array(new Uint8Array(raw.length).map((_,i) => raw.charCodeAt(i)).buffer);
+  const blob = pcmToWav(pcm, s.sample_rate);
+  const audio = new Audio(URL.createObjectURL(blob));
+  wbCraftAudio = audio;
+  const card = document.getElementById('wb-craft-s' + idx);
+  if (card) card.style.borderColor = '#a882ff';
+  audio.onended = () => { if (card) card.style.borderColor = 'var(--border)'; wbCraftAudio = null; };
+  audio.play();
+}
+
+async function wbCraftSelect(archId, previewIdx) {
+  if (!wbCraftSession) return;
+  wbCraftStopAudio();
+  wbCraftStatus('Selecting...');
+  try {
+    const r = await fetch(API + '/crafting/select', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        session_id: wbCraftSession.session_id,
+        axis_id: wbCraftSession.current_axis.id,
+        archetype_id: archId,
+        preview_index: previewIdx,
+      }),
+      signal: AbortSignal.timeout(30000)
+    });
+    const d = await r.json();
+    if (d.success) {
+      wbCraftSession = d.session;
+      wbCraftUpdateProgress();
+      if (d.is_complete) { await wbCraftFinish(); }
+      else { await wbCraftExplore(); }
+    }
+    wbCraftStatus('');
+  } catch (e) { wbCraftStatus('Error: ' + e); }
+}
+
+async function wbCraftSkip() {
+  if (!wbCraftSession) return;
+  wbCraftStopAudio();
+  wbCraftStatus('Skipping...');
+  try {
+    const r = await fetch(API + '/crafting/skip', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ session_id: wbCraftSession.session_id }),
+      signal: AbortSignal.timeout(30000)
+    });
+    const d = await r.json();
+    if (d.success) {
+      wbCraftSession = d.session;
+      wbCraftUpdateProgress();
+      if (d.is_complete) { await wbCraftFinish(); }
+      else { await wbCraftExplore(); }
+    }
+    wbCraftStatus('');
+  } catch (e) { wbCraftStatus('Error: ' + e); }
+}
+
+async function wbCraftBack() {
+  if (!wbCraftSession) return;
+  wbCraftStopAudio();
+  wbCraftStatus('Going back...');
+  try {
+    const r = await fetch(API + '/crafting/back', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ session_id: wbCraftSession.session_id }),
+      signal: AbortSignal.timeout(30000)
+    });
+    const d = await r.json();
+    if (d.success) {
+      wbCraftSession = d.session;
+      wbCraftUpdateProgress();
+      await wbCraftExplore();
+    }
+    wbCraftStatus('');
+  } catch (e) { wbCraftStatus('Error: ' + e); }
+}
+
+async function wbCraftRegen() {
+  if (!wbCraftSession) return;
+  wbCraftStopAudio();
+  await wbCraftExplore();
+}
+
+async function wbCraftFinish() {
+  if (!wbCraftSession) return;
+  wbCraftStatus('Finalizing...');
+  try {
+    const r = await fetch(API + '/crafting/finish', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ session_id: wbCraftSession.session_id }),
+      signal: AbortSignal.timeout(30000)
+    });
+    const d = await r.json();
+    if (d.success) {
+      wbCraftShow('wb-craft-summary');
+      document.getElementById('wb-craft-final-desc').textContent = d.polished_description || d.el_description || '';
+      // Render traits
+      const traits = document.getElementById('wb-craft-traits');
+      const progress = wbCraftSession.progress || [];
+      traits.innerHTML = progress.filter(p => {
+        const sel = (d.selections || {})[p.axis_id];
+        return sel && sel.archetype_id !== '__skipped__';
+      }).map(p => {
+        const sel = d.selections[p.axis_id];
+        return `<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;font-size:0.8rem;">
+          <span style="color:var(--dim);font-size:0.72rem;width:100px;">${p.label}</span>
+          <span style="font-weight:600;flex:1;">${sel.prompt_fragment || sel.archetype_id}</span>
+        </div>`;
+      }).join('');
+      wbCraftStatus('Complete!');
+    } else {
+      wbCraftStatus('Failed: ' + (d.error || 'unknown'));
+    }
+  } catch (e) { wbCraftStatus('Error: ' + e); }
+}
+
+async function wbCraftSave() {
+  if (!wbCraftSession) return;
+  const name = document.getElementById('wb-craft-save-name').value.trim();
+  if (!name) { wbCraftStatus('Enter a name'); return; }
+  wbCraftStatus('Saving...');
+  try {
+    const r = await fetch(API + '/crafting/finish', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ session_id: wbCraftSession.session_id, profile_name: name }),
+      signal: AbortSignal.timeout(30000)
+    });
+    const d = await r.json();
+    if (d.success) {
+      wbCraftStatus('Saved as profile ' + (d.profile_id || name));
+    } else {
+      wbCraftStatus('Save failed: ' + (d.error || 'unknown'));
+    }
+  } catch (e) { wbCraftStatus('Error: ' + e); }
 }
 
 function pcmToWav(samples, sr) {

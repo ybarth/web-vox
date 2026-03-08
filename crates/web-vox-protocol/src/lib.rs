@@ -31,16 +31,8 @@ pub enum ClientMessage {
     ManageServer(ManageServerRequest),
     #[serde(rename = "get_server_stats")]
     GetServerStats,
-    #[serde(rename = "design_voice")]
-    DesignVoice(DesignVoiceRequest),
-    #[serde(rename = "blend_voices")]
-    BlendVoices(BlendVoicesRequest),
-    #[serde(rename = "list_voice_profiles")]
-    ListVoiceProfiles,
-    #[serde(rename = "save_voice_profile")]
-    SaveVoiceProfile(SaveVoiceProfileRequest),
-    #[serde(rename = "delete_voice_profile")]
-    DeleteVoiceProfile(DeleteVoiceProfileRequest),
+    #[serde(rename = "analyze_document")]
+    AnalyzeDocument(AnalyzeDocumentRequest),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,52 +64,22 @@ pub struct ManageServerRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DesignVoiceRequest {
+pub struct AnalyzeDocumentRequest {
     pub id: String,
-    /// Text description of the desired voice (e.g. "A warm female voice with a British accent")
-    pub description: String,
-    /// Text to speak in the preview
-    #[serde(default = "default_preview_text")]
-    pub preview_text: String,
-}
-
-fn default_preview_text() -> String {
-    "Hello, this is a preview of the designed voice.".to_string()
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BlendVoicesRequest {
-    pub id: String,
-    /// Base64-encoded PCM f32 audio samples to blend
-    pub audio_samples_base64: Vec<String>,
-    /// Sample rates for each audio sample
-    pub sample_rates: Vec<u32>,
-    /// Blending weights (will be normalized)
+    pub text: String,
+    /// Input format: "auto", "plain", "markdown", "html"
+    #[serde(default = "default_doc_format")]
+    pub format: String,
+    /// Whether to use AI enhancement (requires ollama)
     #[serde(default)]
-    pub weights: Vec<f32>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SaveVoiceProfileRequest {
-    pub name: String,
-    pub description: String,
-    /// Optional embedding to save
+    pub use_ai: bool,
+    /// Optional custom voice scheme override
     #[serde(default)]
-    pub embedding: Option<Vec<f32>>,
-    /// Optional reference audio (base64 PCM f32)
-    #[serde(default)]
-    pub reference_audio_base64: Option<String>,
-    #[serde(default = "default_profile_sample_rate")]
-    pub sample_rate: u32,
+    pub voice_scheme: Option<serde_json::Value>,
 }
 
-fn default_profile_sample_rate() -> u32 {
-    22050
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DeleteVoiceProfileRequest {
-    pub profile_id: String,
+fn default_doc_format() -> String {
+    "auto".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -195,14 +157,8 @@ pub enum HostMessage {
     ServerStats(ServerStatsResponse),
     #[serde(rename = "quality_score")]
     QualityScore(QualityScore),
-    #[serde(rename = "voice_design_result")]
-    VoiceDesignResult(VoiceDesignResult),
-    #[serde(rename = "voice_blend_result")]
-    VoiceBlendResult(VoiceBlendResult),
-    #[serde(rename = "voice_profiles")]
-    VoiceProfiles(VoiceProfileList),
-    #[serde(rename = "voice_profile_result")]
-    VoiceProfileResult(VoiceProfileResult),
+    #[serde(rename = "document_analysis")]
+    DocumentAnalysis(DocumentAnalysisResult),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -296,66 +252,68 @@ pub struct QualityArtifact {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VoiceDesignResult {
+pub struct DocumentAnalysisResult {
     pub id: String,
     pub success: bool,
-    /// Base64-encoded PCM f32 audio of the designed voice preview
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub audio_base64: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sample_rate: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub duration_ms: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VoiceBlendResult {
-    pub id: String,
-    pub success: bool,
-    /// The blended speaker embedding vector
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub embedding: Option<Vec<f32>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub dimensions: Option<usize>,
-    /// Normalized weights used for blending
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub weights_normalized: Option<Vec<f32>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VoiceProfileList {
-    pub profiles: Vec<VoiceProfileSummary>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VoiceProfileSummary {
-    pub id: String,
-    pub name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sample_rate: Option<u32>,
+    pub format: Option<String>,
     #[serde(default)]
-    pub has_embedding: bool,
-    #[serde(default)]
-    pub has_reference_audio: bool,
+    pub elements: Vec<DocumentElement>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub created_at: Option<f64>,
+    pub stats: Option<DocumentStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VoiceProfileResult {
-    pub success: bool,
+pub struct DocumentElement {
+    #[serde(rename = "type")]
+    pub element_type: String,
+    pub text: String,
+    pub char_offset: usize,
+    pub char_length: usize,
+    #[serde(default)]
+    pub level: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub profile_id: Option<String>,
+    pub voice: Option<DocumentVoiceMapping>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
+    pub position: Option<DocumentPosition>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocumentVoiceMapping {
+    #[serde(default = "default_rate")]
+    pub rate: f32,
+    #[serde(default = "default_pitch")]
+    pub pitch: f32,
+    #[serde(default = "default_volume")]
+    pub volume: f32,
+    #[serde(default)]
+    pub pause_before_ms: u32,
+    #[serde(default)]
+    pub pause_after_ms: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub voice_hint: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocumentPosition {
+    pub word_offset: usize,
+    pub word_count: usize,
+    pub total_words: usize,
+    pub progress: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocumentStats {
+    pub total_elements: usize,
+    #[serde(default)]
+    pub element_counts: std::collections::HashMap<String, usize>,
+    pub total_chars: usize,
+    pub total_words: usize,
+    pub analysis_time_ms: f64,
+    #[serde(default)]
+    pub ai_enhanced: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

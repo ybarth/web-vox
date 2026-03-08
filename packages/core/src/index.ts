@@ -34,10 +34,11 @@ export type {
   QualityArtifact,
   QualityAnalyzerType,
   NativeQualityScore,
-  VoiceDesignResult,
-  VoiceBlendResult,
-  VoiceProfileSummary,
-  VoiceProfileResult,
+  DocumentAnalysisResult,
+  DocumentElement,
+  DocumentVoiceMapping,
+  DocumentPosition,
+  DocumentStats,
 } from './types.js';
 
 // Engine adapters
