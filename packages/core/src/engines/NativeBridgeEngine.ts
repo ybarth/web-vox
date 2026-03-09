@@ -28,6 +28,10 @@ import type {
   VoiceSampleResult,
   ServerProcessStats,
   ServerManageResult,
+  OcrResult,
+  OcrBoundingBox,
+  NativeOcrResult,
+  ExtractTextOptions,
 } from '../types.js';
 import type { EngineAdapter } from './EngineAdapter.js';
 import type { TransportAdapter } from '../transport/TransportAdapter.js';
@@ -579,6 +583,49 @@ export class NativeBridgeEngine implements EngineAdapter {
     this.collectedChunks.clear();
     this.collectedBoundaries.clear();
     this.collectedQuality.clear();
+  }
+
+  async extractText(
+    imageBase64: string,
+    options?: ExtractTextOptions,
+  ): Promise<OcrResult> {
+    if (!this.transport) throw new Error('Not initialized');
+    const id = crypto.randomUUID();
+    const response = await this.transport.send({
+      type: 'extract_text',
+      id,
+      image_base64: imageBase64,
+      image_format: options?.imageFormat ?? 'png',
+      min_confidence: options?.minConfidence ?? 0.0,
+      regions: options?.regions,
+    });
+    if (response.type === 'error') {
+      throw new Error((response as unknown as { message: string }).message ?? 'OCR extraction failed');
+    }
+    const r = response as unknown as NativeOcrResult;
+    const boundingBoxes: OcrBoundingBox[] = (r.bounding_boxes ?? []).map(b => ({
+      text: b.text,
+      confidence: b.confidence,
+      left: b.left,
+      top: b.top,
+      right: b.right,
+      bottom: b.bottom,
+      width: b.width,
+      height: b.height,
+      polygon: b.polygon,
+    }));
+    return {
+      id: r.id,
+      success: r.success,
+      text: r.text,
+      confidence: r.confidence,
+      boundingBoxes,
+      totalRegions: r.total_regions,
+      imageWidth: r.image_width,
+      imageHeight: r.image_height,
+      processingTimeMs: r.processing_time_ms,
+      error: r.error,
+    };
   }
 
   dispose(): void {

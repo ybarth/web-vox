@@ -46,6 +46,10 @@ export type {
   DocumentSynthesisComplete,
   ElementSynthesisResult,
   DocumentSynthesisResult,
+  OcrResult,
+  OcrBoundingBox,
+  OcrRegionRequest,
+  ExtractTextOptions,
 } from './types.js';
 
 // Engine adapters

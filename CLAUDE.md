@@ -104,7 +104,32 @@ Web-vox-pro is a meta-TTS platform forked from web-vox. It transforms multiple o
 - `NativeBridgeEngine.synthesizeDocument()` — collects per-element audio/boundaries/metadata, groups by element_index, returns both per-element and combined results, with progress callback
 - `WebSocketTransport` — `document_synthesis_complete` added as terminal message type
 - Test workbench: `test-engines/progressive-synth/index.html` (standalone, removable) with progress bar, element timeline, word highlight, playback with element seek
-### Phase 5: OCR/Vision & Spatial Coordinates - PLANNED
+### Phase 5: OCR/Vision & Spatial Coordinates - COMPLETE
+- `ocr_server.py` — Python server (port 21751) with:
+  - EasyOCR for text extraction with GPU support (configurable via device_config.json)
+  - Base64 image input (PNG, JPG, WebP) or file path
+  - Bounding box output: axis-aligned rect + quadrilateral polygon per text region
+  - Confidence scores per region + overall average
+  - Image dimensions detection via PIL
+  - Region-of-interest extraction (crop + OCR per region)
+  - Configurable languages and min confidence threshold
+  - Endpoints: `/health`, `/languages`, `/extract`, `/extract_regions`
+- `ocr.rs` — Rust HTTP client (same ureq pattern)
+- Protocol extended: `ExtractTextRequest` (with `OcrRegionRequest`), `OcrResult`, `OcrBoundingBox`
+- `ClientMessage::ExtractText` + `HostMessage::OcrResult` variants
+- `ws_server.rs` — `handle_extract_text()` handler, supports both full-image and region-based extraction, server added to `SERVER_DEFS`
+- TypeScript types mirrored: `OcrResult`, `OcrBoundingBox`, `OcrRegionRequest`, `ExtractTextOptions`, native variants
+- `NativeBridgeEngine.extractText()` — full request/response mapping
+- `WebSocketTransport` — `ocr_result` added as terminal message type
+- Test workbench: `test-engines/ocr/index.html` (standalone, removable) with:
+  - Drag-and-drop image upload, sample image generation
+  - Confidence threshold slider
+  - 3-tab results view: Extracted Text, Bounding Boxes list, Raw JSON
+  - Spatial visualization with bounding box overlay on image
+  - Interactive hover highlighting between box list and canvas
+  - Metrics bar (regions, confidence, processing time, image dimensions)
+  - Direct HTTP mode to OCR server (standalone, no WebSocket needed)
+- Python deps: easyocr, Pillow (install in `tts-venv`)
 ### Phase 6: SDK Packaging - PLANNED
 
 ## Development Patterns

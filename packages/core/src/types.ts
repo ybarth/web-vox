@@ -317,6 +317,72 @@ export interface NativeDocumentAnalysisResult {
   error?: string;
 }
 
+// -- Phase 5: OCR / Vision Types --
+
+export interface OcrBoundingBox {
+  text: string;
+  confidence: number;
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  width: number;
+  height: number;
+  polygon?: number[][];
+}
+
+export interface OcrResult {
+  id: string;
+  success: boolean;
+  text: string;
+  confidence: number;
+  boundingBoxes: OcrBoundingBox[];
+  totalRegions: number;
+  imageWidth?: number;
+  imageHeight?: number;
+  processingTimeMs: number;
+  error?: string;
+}
+
+export interface OcrRegionRequest {
+  label: string;
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+export interface ExtractTextOptions {
+  imageFormat?: string;
+  minConfidence?: number;
+  regions?: OcrRegionRequest[];
+}
+
+export interface NativeOcrBoundingBox {
+  text: string;
+  confidence: number;
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  width: number;
+  height: number;
+  polygon?: number[][];
+}
+
+export interface NativeOcrResult {
+  id: string;
+  success: boolean;
+  text: string;
+  confidence: number;
+  bounding_boxes: NativeOcrBoundingBox[];
+  total_regions: number;
+  image_width?: number;
+  image_height?: number;
+  processing_time_ms: number;
+  error?: string;
+}
+
 // -- Phase 4: Progressive Document Synthesis Types --
 
 export interface SynthesizeDocumentOptions extends SynthesisOptions {
@@ -418,7 +484,7 @@ export interface NativeDocumentSynthesisComplete {
 }
 
 export interface NativeRequest {
-  type: 'synthesize' | 'cancel' | 'list_voices' | 'get_system_info' | 'validate_voice' | 'list_piper_catalog' | 'download_piper_voice' | 'list_voice_samples' | 'upload_voice_sample' | 'delete_voice_sample' | 'manage_server' | 'get_server_stats' | 'analyze_document' | 'synthesize_document';
+  type: 'synthesize' | 'cancel' | 'list_voices' | 'get_system_info' | 'validate_voice' | 'list_piper_catalog' | 'download_piper_voice' | 'list_voice_samples' | 'upload_voice_sample' | 'delete_voice_sample' | 'manage_server' | 'get_server_stats' | 'analyze_document' | 'synthesize_document' | 'extract_text';
   id?: string;
   text?: string;
   voice_id?: string;
@@ -436,10 +502,14 @@ export interface NativeRequest {
   format?: string;
   use_ai?: boolean;
   voice_scheme?: Record<string, unknown>;
+  image_base64?: string;
+  image_format?: string;
+  min_confidence?: number;
+  regions?: OcrRegionRequest[];
 }
 
 export interface NativeResponse {
-  type: 'audio_chunk' | 'word_boundary' | 'synthesis_complete' | 'voice_list' | 'error' | 'system_info' | 'voice_validation' | 'piper_catalog' | 'piper_download_complete' | 'voice_samples' | 'voice_sample_result' | 'server_manage_result' | 'server_stats' | 'quality_score' | 'document_analysis' | 'element_start' | 'element_complete' | 'document_progress' | 'document_synthesis_complete';
+  type: 'audio_chunk' | 'word_boundary' | 'synthesis_complete' | 'voice_list' | 'error' | 'system_info' | 'voice_validation' | 'piper_catalog' | 'piper_download_complete' | 'voice_samples' | 'voice_sample_result' | 'server_manage_result' | 'server_stats' | 'quality_score' | 'document_analysis' | 'element_start' | 'element_complete' | 'document_progress' | 'document_synthesis_complete' | 'ocr_result';
   id?: string;
   [key: string]: unknown;
 }

@@ -35,6 +35,8 @@ pub enum ClientMessage {
     AnalyzeDocument(AnalyzeDocumentRequest),
     #[serde(rename = "synthesize_document")]
     SynthesizeDocument(SynthesizeDocumentRequest),
+    #[serde(rename = "extract_text")]
+    ExtractText(ExtractTextRequest),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -198,6 +200,8 @@ pub enum HostMessage {
     DocumentProgress(DocumentProgress),
     #[serde(rename = "document_synthesis_complete")]
     DocumentSynthesisComplete(DocumentSynthesisComplete),
+    #[serde(rename = "ocr_result")]
+    OcrResult(OcrResult),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -400,6 +404,73 @@ pub struct DocumentSynthesisComplete {
     pub id: String,
     pub total_elements: u32,
     pub total_duration_ms: f64,
+}
+
+// -- Phase 5: OCR / Vision Types --
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtractTextRequest {
+    pub id: String,
+    /// Base64-encoded image data
+    pub image_base64: String,
+    /// Image format: "png", "jpg", "webp", etc.
+    #[serde(default = "default_image_format")]
+    pub image_format: String,
+    /// Minimum confidence threshold (0.0-1.0)
+    #[serde(default)]
+    pub min_confidence: f32,
+    /// Optional regions of interest
+    #[serde(default)]
+    pub regions: Vec<OcrRegionRequest>,
+}
+
+fn default_image_format() -> String {
+    "png".to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OcrRegionRequest {
+    pub label: String,
+    pub left: f32,
+    pub top: f32,
+    pub right: f32,
+    pub bottom: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OcrResult {
+    pub id: String,
+    pub success: bool,
+    #[serde(default)]
+    pub text: String,
+    #[serde(default)]
+    pub confidence: f32,
+    #[serde(default)]
+    pub bounding_boxes: Vec<OcrBoundingBox>,
+    #[serde(default)]
+    pub total_regions: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image_width: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image_height: Option<u32>,
+    #[serde(default)]
+    pub processing_time_ms: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OcrBoundingBox {
+    pub text: String,
+    pub confidence: f32,
+    pub left: f32,
+    pub top: f32,
+    pub right: f32,
+    pub bottom: f32,
+    pub width: f32,
+    pub height: f32,
+    #[serde(default)]
+    pub polygon: Vec<Vec<f32>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -32,6 +32,7 @@ use web_vox_native_bridge::tts::qwen::QwenSynthesizer;
 use web_vox_native_bridge::tts::qwen_clone::QwenCloneSynthesizer;
 use web_vox_native_bridge::tts::piper::PiperSynthesizer;
 use web_vox_native_bridge::tts::document_analyzer::DocumentAnalyzerClient;
+use web_vox_native_bridge::tts::ocr::OcrClient;
 use web_vox_native_bridge::tts::traits::{SynthesisOptions, TtsSynthesizer};
 
 /// A TTS work request sent from a tokio task to the main thread.
@@ -61,6 +62,7 @@ const SERVER_DEFS: &[ServerDef] = &[
     ServerDef { engine: "alignment", name: "Forced Alignment", port: 21747, python: "python3.11", script: "alignment_server.py", extra_args: &["--preload"] },
     ServerDef { engine: "quality", name: "Quality Analysis", port: 21748, python: "python3.11", script: "quality_server.py", extra_args: &[] },
     ServerDef { engine: "document-analyzer", name: "Document Analyzer", port: 21750, python: "python3.11", script: "document_analyzer_server.py", extra_args: &[] },
+    ServerDef { engine: "ocr", name: "OCR", port: 21751, python: "python3.11", script: "ocr_server.py", extra_args: &[] },
 ];
 
 struct ManagedProcess {
@@ -501,6 +503,7 @@ fn handle_message_sync(msg: &ClientMessage) -> Vec<String> {
         ClientMessage::GetServerStats => handle_get_server_stats(),
         ClientMessage::AnalyzeDocument(req) => handle_analyze_document(req),
         ClientMessage::SynthesizeDocument(req) => handle_synthesize_document(req),
+        ClientMessage::ExtractText(req) => handle_extract_text(req),
     }
 }
 
@@ -2166,6 +2169,159 @@ fn handle_analyze_document(req: &AnalyzeDocumentRequest) -> Vec<String> {
                 error: Some(e.to_string()),
             });
             vec![serde_json::to_string(&msg).unwrap()]
+        }
+    }
+}
+
+fn handle_extract_text(req: &ExtractTextRequest) -> Vec<String> {
+    println!(
+        "  [ocr] Extract text: {} bytes image, format={}, regions={}",
+        req.image_base64.len(),
+        req.image_format,
+        req.regions.len(),
+    );
+
+    let client = OcrClient::new(None);
+    if !client.probe() {
+        let msg = HostMessage::OcrResult(OcrResult {
+            id: req.id.clone(),
+            success: false,
+            text: String::new(),
+            confidence: 0.0,
+            bounding_boxes: vec![],
+            total_regions: 0,
+            image_width: None,
+            image_height: None,
+            processing_time_ms: 0.0,
+            error: Some("OCR server not running. Start it with: python3 ocr_server.py".into()),
+        });
+        return vec![serde_json::to_string(&msg).unwrap()];
+    }
+
+    if !req.regions.is_empty() {
+        // Region-based extraction
+        let regions_json: Vec<serde_json::Value> = req
+            .regions
+            .iter()
+            .map(|r| {
+                serde_json::json!({
+                    "label": r.label,
+                    "left": r.left,
+                    "top": r.top,
+                    "right": r.right,
+                    "bottom": r.bottom,
+                })
+            })
+            .collect();
+
+        match client.extract_regions(&req.image_base64, &req.image_format, &regions_json) {
+            Ok(result) => {
+                // Flatten region results into bounding boxes
+                let mut all_boxes: Vec<web_vox_protocol::OcrBoundingBox> = vec![];
+                let mut all_text_parts = vec![];
+                let mut total_conf = 0.0f32;
+                let mut count = 0usize;
+
+                for region in &result.regions {
+                    all_text_parts.push(region.text.clone());
+                    for b in &region.bounding_boxes {
+                        all_boxes.push(web_vox_protocol::OcrBoundingBox {
+                            text: b.text.clone(),
+                            confidence: b.confidence,
+                            left: b.left,
+                            top: b.top,
+                            right: b.right,
+                            bottom: b.bottom,
+                            width: b.width,
+                            height: b.height,
+                            polygon: b.polygon.clone(),
+                        });
+                        total_conf += b.confidence;
+                        count += 1;
+                    }
+                }
+
+                let avg_conf = if count > 0 { total_conf / count as f32 } else { 0.0 };
+
+                let msg = HostMessage::OcrResult(OcrResult {
+                    id: req.id.clone(),
+                    success: result.success,
+                    text: all_text_parts.join("\n"),
+                    confidence: avg_conf,
+                    bounding_boxes: all_boxes,
+                    total_regions: result.total_regions,
+                    image_width: result.image_width,
+                    image_height: result.image_height,
+                    processing_time_ms: result.processing_time_ms,
+                    error: result.error,
+                });
+                vec![serde_json::to_string(&msg).unwrap()]
+            }
+            Err(e) => {
+                let msg = HostMessage::OcrResult(OcrResult {
+                    id: req.id.clone(),
+                    success: false,
+                    text: String::new(),
+                    confidence: 0.0,
+                    bounding_boxes: vec![],
+                    total_regions: 0,
+                    image_width: None,
+                    image_height: None,
+                    processing_time_ms: 0.0,
+                    error: Some(e.to_string()),
+                });
+                vec![serde_json::to_string(&msg).unwrap()]
+            }
+        }
+    } else {
+        // Full-image extraction
+        match client.extract(&req.image_base64, &req.image_format, req.min_confidence) {
+            Ok(extraction) => {
+                let boxes: Vec<web_vox_protocol::OcrBoundingBox> = extraction
+                    .bounding_boxes
+                    .into_iter()
+                    .map(|b| web_vox_protocol::OcrBoundingBox {
+                        text: b.text,
+                        confidence: b.confidence,
+                        left: b.left,
+                        top: b.top,
+                        right: b.right,
+                        bottom: b.bottom,
+                        width: b.width,
+                        height: b.height,
+                        polygon: b.polygon,
+                    })
+                    .collect();
+
+                let msg = HostMessage::OcrResult(OcrResult {
+                    id: req.id.clone(),
+                    success: extraction.success,
+                    text: extraction.text,
+                    confidence: extraction.confidence,
+                    bounding_boxes: boxes,
+                    total_regions: extraction.total_regions,
+                    image_width: extraction.image_width,
+                    image_height: extraction.image_height,
+                    processing_time_ms: extraction.processing_time_ms,
+                    error: extraction.error,
+                });
+                vec![serde_json::to_string(&msg).unwrap()]
+            }
+            Err(e) => {
+                let msg = HostMessage::OcrResult(OcrResult {
+                    id: req.id.clone(),
+                    success: false,
+                    text: String::new(),
+                    confidence: 0.0,
+                    bounding_boxes: vec![],
+                    total_regions: 0,
+                    image_width: None,
+                    image_height: None,
+                    processing_time_ms: 0.0,
+                    error: Some(e.to_string()),
+                });
+                vec![serde_json::to_string(&msg).unwrap()]
+            }
         }
     }
 }

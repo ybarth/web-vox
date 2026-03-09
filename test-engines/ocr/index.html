@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OCR Test Workbench — web-vox-pro Phase 5</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #e6edf3; --text2: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --red: #f85149; --yellow: #d29922; --purple: #bc8cff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.5; padding: 20px;
+  }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; }
+  h2 { font-size: 1rem; color: var(--text2); margin-bottom: 16px; font-weight: normal; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 16px;
+  }
+  .card-title {
+    font-size: 0.85rem; font-weight: 600; text-transform: uppercase;
+    color: var(--text2); letter-spacing: 0.5px; margin-bottom: 12px;
+  }
+  .full-width { grid-column: 1 / -1; }
+  button {
+    background: var(--accent); color: #fff; border: none; border-radius: 6px;
+    padding: 8px 16px; cursor: pointer; font-size: 0.85rem; font-weight: 600;
+  }
+  button:hover { opacity: 0.9; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  button.secondary { background: var(--border); }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+
+  /* Status bar */
+  .status-bar {
+    display: flex; gap: 16px; align-items: center;
+    padding: 8px 12px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; margin-top: 8px; font-size: 0.8rem;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+  .dot.online { background: var(--green); }
+  .dot.offline { background: var(--red); }
+
+  /* Image upload */
+  .drop-zone {
+    border: 2px dashed var(--border); border-radius: 8px; padding: 40px 20px;
+    text-align: center; cursor: pointer; transition: border-color 0.2s;
+    color: var(--text2);
+  }
+  .drop-zone:hover, .drop-zone.dragover { border-color: var(--accent); }
+  .drop-zone img { max-width: 100%; max-height: 300px; border-radius: 4px; margin-top: 12px; }
+
+  /* Canvas overlay */
+  .image-container { position: relative; display: inline-block; max-width: 100%; }
+  .image-container img { max-width: 100%; display: block; border-radius: 4px; }
+  .image-container canvas {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none;
+  }
+
+  /* Results */
+  .results-text {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    padding: 12px; font-family: monospace; font-size: 0.85rem;
+    white-space: pre-wrap; max-height: 300px; overflow-y: auto; margin-top: 8px;
+  }
+  .metrics-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 8px; margin-top: 8px;
+  }
+  .metric {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    padding: 8px 10px; text-align: center;
+  }
+  .metric-value { font-size: 1.2rem; font-weight: 700; color: var(--accent); }
+  .metric-label { font-size: 0.7rem; color: var(--text2); text-transform: uppercase; }
+
+  /* Bounding box list */
+  .bbox-list { max-height: 300px; overflow-y: auto; margin-top: 8px; }
+  .bbox-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 6px 10px; border-bottom: 1px solid var(--border); font-size: 0.8rem;
+    cursor: pointer; transition: background 0.15s;
+  }
+  .bbox-item:hover { background: rgba(88, 166, 255, 0.1); }
+  .bbox-item.selected { background: rgba(88, 166, 255, 0.2); }
+  .bbox-text { flex: 1; margin-right: 8px; }
+  .bbox-conf {
+    font-size: 0.75rem; padding: 2px 6px; border-radius: 10px;
+    font-weight: 600;
+  }
+  .conf-high { background: rgba(63, 185, 80, 0.2); color: var(--green); }
+  .conf-mid { background: rgba(210, 153, 34, 0.2); color: var(--yellow); }
+  .conf-low { background: rgba(248, 81, 73, 0.2); color: var(--red); }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+  .tab {
+    padding: 6px 14px; font-size: 0.8rem; cursor: pointer; border-bottom: 2px solid transparent;
+    color: var(--text2); transition: all 0.15s;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* Confidence slider */
+  input[type="range"] { width: 100%; accent-color: var(--accent); }
+  .slider-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .slider-row label { font-size: 0.8rem; color: var(--text2); white-space: nowrap; }
+  .slider-row span { font-size: 0.8rem; font-weight: 600; min-width: 36px; }
+
+  /* Direct server mode */
+  select, input[type="text"] {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); padding: 6px 10px; font-size: 0.85rem; width: 100%;
+  }
+  .form-row { margin-top: 8px; }
+  .form-row label { display: block; font-size: 0.8rem; color: var(--text2); margin-bottom: 4px; }
+</style>
+</head>
+<body>
+
+<h1>OCR Test Workbench</h1>
+<h2>Phase 5 — Text extraction with spatial bounding boxes</h2>
+
+<div class="status-bar">
+  <span><span class="dot offline" id="dot-ocr"></span> OCR Server</span>
+  <span id="status-text" style="color: var(--text2)">Checking...</span>
+  <span style="margin-left: auto; color: var(--text2)" id="mode-label">Mode: Direct HTTP</span>
+  <button class="secondary" style="padding: 4px 10px; font-size: 0.75rem" onclick="checkHealth()">Refresh</button>
+</div>
+
+<div class="grid">
+  <!-- Image Input -->
+  <div class="card">
+    <div class="card-title">Image Input</div>
+    <div class="drop-zone" id="dropZone" onclick="fileInput.click()">
+      <div id="dropLabel">Drop an image here or click to browse<br><small>PNG, JPG, WebP supported</small></div>
+      <div class="image-container" id="imageContainer" style="display:none">
+        <img id="previewImg" />
+        <canvas id="overlayCanvas"></canvas>
+      </div>
+    </div>
+    <input type="file" id="fileInput" accept="image/*" style="display:none" />
+
+    <div class="slider-row">
+      <label>Min confidence:</label>
+      <input type="range" id="minConfidence" min="0" max="100" value="0" />
+      <span id="confValue">0%</span>
+    </div>
+
+    <div class="form-row">
+      <label>Test Assets</label>
+      <select id="assetSelect" onchange="loadTestAsset(this.value)">
+        <option value="">— Select a test image —</option>
+        <option value="01_simple_text.png">01 Simple Text (pangrams, charset)</option>
+        <option value="02_article.png">02 Article (multi-paragraph)</option>
+        <option value="03_receipt.png">03 Receipt (structured data)</option>
+        <option value="04_columns.png">04 Newspaper Columns (multi-column)</option>
+        <option value="05_handwriting.png">05 Handwriting (cursive)</option>
+        <option value="06_low_contrast.png">06 Low Contrast (noisy bg)</option>
+        <option value="07_mixed_sizes.png">07 Mixed Font Sizes</option>
+        <option value="08_rotated.png">08 Rotated Text (angled)</option>
+        <option value="09_code.png">09 Code (monospace, dark bg)</option>
+        <option value="10_table.png">10 Table (grid data)</option>
+        <option value="11_dark_background.png">11 Dark Background (light text)</option>
+        <option value="12_sign.png">12 Sign / Poster</option>
+        <option value="13_multilingual.png">13 Multi-Language</option>
+        <option value="14_book_page.png">14 Book Page (dense text)</option>
+        <option value="15_form.png">15 Form (labels + values)</option>
+      </select>
+    </div>
+
+    <div class="btn-row">
+      <button id="extractBtn" disabled onclick="runExtraction()">Extract Text</button>
+      <button class="secondary" onclick="loadSampleImage('text')">Generate: Text</button>
+      <button class="secondary" onclick="loadSampleImage('receipt')">Generate: Receipt</button>
+      <button class="secondary" onclick="clearAll()">Clear</button>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div class="card">
+    <div class="card-title">Results</div>
+    <div class="tabs">
+      <div class="tab active" data-tab="text" onclick="switchTab(this)">Extracted Text</div>
+      <div class="tab" data-tab="boxes" onclick="switchTab(this)">Bounding Boxes</div>
+      <div class="tab" data-tab="json" onclick="switchTab(this)">Raw JSON</div>
+    </div>
+
+    <div class="tab-panel active" id="tab-text">
+      <div class="metrics-grid" id="metricsGrid" style="display:none"></div>
+      <div class="results-text" id="extractedText" style="color: var(--text2)">No results yet. Upload an image and click Extract Text.</div>
+    </div>
+
+    <div class="tab-panel" id="tab-boxes">
+      <div class="bbox-list" id="bboxList">
+        <div style="color: var(--text2); font-size: 0.85rem; padding: 12px;">No bounding boxes yet.</div>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="tab-json">
+      <div class="results-text" id="rawJson" style="color: var(--text2)">No results yet.</div>
+    </div>
+  </div>
+
+  <!-- Visual Overlay -->
+  <div class="card full-width">
+    <div class="card-title">Spatial Visualization</div>
+    <div style="text-align: center">
+      <div class="image-container" id="vizContainer" style="display:none">
+        <img id="vizImg" />
+        <canvas id="vizCanvas"></canvas>
+      </div>
+      <div id="vizPlaceholder" style="color: var(--text2); font-size: 0.85rem; padding: 40px;">
+        Extract text from an image to see bounding boxes overlaid on the image.
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const OCR_URL = 'http://127.0.0.1:21751';
+let currentImageBase64 = null;
+let currentImageFormat = 'png';
+let currentResult = null;
+let highlightedIndex = -1;
+
+// ── Health check ────────────────────────────────────────────────────
+
+async function checkHealth() {
+  const dot = document.getElementById('dot-ocr');
+  const statusText = document.getElementById('status-text');
+  try {
+    const resp = await fetch(`${OCR_URL}/health`, { signal: AbortSignal.timeout(3000) });
+    const data = await resp.json();
+    dot.className = 'dot online';
+    const parts = [`Device: ${data.device}`, `Languages: ${data.languages?.join(', ')}`];
+    if (data.model_loaded) parts.push('Model loaded');
+    statusText.textContent = parts.join(' | ');
+    statusText.style.color = 'var(--green)';
+  } catch {
+    dot.className = 'dot offline';
+    statusText.textContent = 'OCR server offline — run: python3 ocr_server.py';
+    statusText.style.color = 'var(--red)';
+  }
+}
+
+// ── Image handling ──────────────────────────────────────────────────
+
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const previewImg = document.getElementById('previewImg');
+const imageContainer = document.getElementById('imageContainer');
+const dropLabel = document.getElementById('dropLabel');
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  if (e.dataTransfer.files.length) loadFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => { if (fileInput.files.length) loadFile(fileInput.files[0]); });
+
+function loadFile(file) {
+  if (!file.type.startsWith('image/')) return;
+  currentImageFormat = file.type.split('/')[1] || 'png';
+  if (currentImageFormat === 'jpeg') currentImageFormat = 'jpg';
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    const dataUrl = e.target.result;
+    previewImg.src = dataUrl;
+    imageContainer.style.display = 'inline-block';
+    dropLabel.style.display = 'none';
+    // Strip data URL prefix to get pure base64
+    currentImageBase64 = dataUrl.split(',')[1];
+    document.getElementById('extractBtn').disabled = false;
+  };
+  reader.readAsDataURL(file);
+}
+
+async function loadTestAsset(filename) {
+  if (!filename) return;
+  try {
+    const resp = await fetch(`test-assets/${filename}`);
+    const blob = await resp.blob();
+    currentImageFormat = 'png';
+    const reader = new FileReader();
+    reader.onload = e => {
+      const dataUrl = e.target.result;
+      previewImg.src = dataUrl;
+      imageContainer.style.display = 'inline-block';
+      dropLabel.style.display = 'none';
+      currentImageBase64 = dataUrl.split(',')[1];
+      document.getElementById('extractBtn').disabled = false;
+    };
+    reader.readAsDataURL(blob);
+  } catch (err) {
+    console.error('Failed to load test asset:', err);
+  }
+}
+
+function loadSampleImage(type) {
+  // Generate sample images using canvas
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+
+  if (type === 'text') {
+    canvas.width = 600; canvas.height = 300;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, 600, 300);
+    ctx.fillStyle = '#000000';
+    ctx.font = 'bold 28px serif';
+    ctx.fillText('The Quick Brown Fox', 30, 60);
+    ctx.font = '22px serif';
+    ctx.fillText('Jumps over the lazy dog.', 30, 100);
+    ctx.font = '18px sans-serif';
+    ctx.fillText('Lorem ipsum dolor sit amet,', 30, 150);
+    ctx.fillText('consectetur adipiscing elit.', 30, 180);
+    ctx.font = 'bold 16px monospace';
+    ctx.fillText('OCR Test Sample #1', 30, 230);
+    ctx.fillText('web-vox-pro Phase 5', 30, 260);
+  } else {
+    canvas.width = 400; canvas.height = 500;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, 400, 500);
+    ctx.fillStyle = '#000000';
+    ctx.font = 'bold 20px sans-serif';
+    ctx.fillText('COFFEE SHOP', 130, 40);
+    ctx.font = '14px sans-serif';
+    ctx.fillText('123 Main Street', 145, 65);
+    ctx.fillText('─'.repeat(30), 50, 90);
+    ctx.font = '15px monospace';
+    ctx.fillText('Cappuccino        $4.50', 50, 120);
+    ctx.fillText('Croissant         $3.25', 50, 145);
+    ctx.fillText('Orange Juice      $3.00', 50, 170);
+    ctx.fillText('─'.repeat(30), 50, 195);
+    ctx.font = 'bold 15px monospace';
+    ctx.fillText('TOTAL            $10.75', 50, 225);
+    ctx.font = '13px sans-serif';
+    ctx.fillText('Thank you for your visit!', 110, 270);
+  }
+
+  canvas.toBlob(blob => {
+    currentImageFormat = 'png';
+    const reader = new FileReader();
+    reader.onload = e => {
+      const dataUrl = e.target.result;
+      previewImg.src = dataUrl;
+      imageContainer.style.display = 'inline-block';
+      dropLabel.style.display = 'none';
+      currentImageBase64 = dataUrl.split(',')[1];
+      document.getElementById('extractBtn').disabled = false;
+    };
+    reader.readAsDataURL(blob);
+  }, 'image/png');
+}
+
+// ── Extraction ──────────────────────────────────────────────────────
+
+async function runExtraction() {
+  if (!currentImageBase64) return;
+  const btn = document.getElementById('extractBtn');
+  btn.disabled = true;
+  btn.textContent = 'Extracting...';
+
+  const minConf = parseInt(document.getElementById('minConfidence').value) / 100;
+
+  try {
+    const resp = await fetch(`${OCR_URL}/extract`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        image_base64: currentImageBase64,
+        image_format: currentImageFormat,
+        min_confidence: minConf,
+      }),
+    });
+    const result = await resp.json();
+    currentResult = result;
+    renderResults(result);
+  } catch (err) {
+    document.getElementById('extractedText').textContent = `Error: ${err.message}`;
+    document.getElementById('extractedText').style.color = 'var(--red)';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Extract Text';
+  }
+}
+
+// ── Rendering ───────────────────────────────────────────────────────
+
+function renderResults(result) {
+  // Metrics
+  const metricsGrid = document.getElementById('metricsGrid');
+  metricsGrid.style.display = 'grid';
+  metricsGrid.innerHTML = `
+    <div class="metric"><div class="metric-value">${result.total_regions || 0}</div><div class="metric-label">Regions</div></div>
+    <div class="metric"><div class="metric-value">${(result.confidence * 100).toFixed(1)}%</div><div class="metric-label">Avg Confidence</div></div>
+    <div class="metric"><div class="metric-value">${result.processing_time_ms?.toFixed(0) || '?'}ms</div><div class="metric-label">Processing Time</div></div>
+    <div class="metric"><div class="metric-value">${result.image_width || '?'} x ${result.image_height || '?'}</div><div class="metric-label">Image Size</div></div>
+  `;
+
+  // Extracted text
+  const textEl = document.getElementById('extractedText');
+  textEl.textContent = result.text || '(no text found)';
+  textEl.style.color = result.text ? 'var(--text)' : 'var(--text2)';
+
+  // Bounding boxes list
+  const bboxList = document.getElementById('bboxList');
+  if (!result.bounding_boxes?.length) {
+    bboxList.innerHTML = '<div style="color: var(--text2); font-size: 0.85rem; padding: 12px;">No bounding boxes detected.</div>';
+  } else {
+    bboxList.innerHTML = result.bounding_boxes.map((b, i) => {
+      const confClass = b.confidence >= 0.8 ? 'conf-high' : b.confidence >= 0.5 ? 'conf-mid' : 'conf-low';
+      return `<div class="bbox-item" data-index="${i}" onclick="highlightBox(${i})" onmouseenter="highlightBox(${i})" onmouseleave="highlightBox(-1)">
+        <span class="bbox-text">${escHtml(b.text)}</span>
+        <span class="bbox-conf ${confClass}">${(b.confidence * 100).toFixed(0)}%</span>
+        <span style="color: var(--text2); font-size: 0.7rem; margin-left: 6px">${b.left.toFixed(0)},${b.top.toFixed(0)}</span>
+      </div>`;
+    }).join('');
+  }
+
+  // Raw JSON
+  document.getElementById('rawJson').textContent = JSON.stringify(result, null, 2);
+
+  // Visualization
+  renderVisualization(result);
+}
+
+function renderVisualization(result) {
+  const vizContainer = document.getElementById('vizContainer');
+  const vizImg = document.getElementById('vizImg');
+  const vizCanvas = document.getElementById('vizCanvas');
+  const vizPlaceholder = document.getElementById('vizPlaceholder');
+
+  if (!result.bounding_boxes?.length) {
+    vizContainer.style.display = 'none';
+    vizPlaceholder.style.display = 'block';
+    vizPlaceholder.textContent = 'No bounding boxes to visualize.';
+    return;
+  }
+
+  vizPlaceholder.style.display = 'none';
+  vizContainer.style.display = 'inline-block';
+  vizImg.src = previewImg.src;
+
+  vizImg.onload = () => {
+    vizCanvas.width = vizImg.naturalWidth;
+    vizCanvas.height = vizImg.naturalHeight;
+    drawBoxes(vizCanvas, result.bounding_boxes, -1);
+  };
+}
+
+function drawBoxes(canvas, boxes, highlightIdx) {
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const colors = [
+    'rgba(88, 166, 255, 0.6)',   // blue
+    'rgba(63, 185, 80, 0.6)',    // green
+    'rgba(188, 140, 255, 0.6)',  // purple
+    'rgba(210, 153, 34, 0.6)',   // yellow
+    'rgba(255, 123, 114, 0.6)',  // red
+  ];
+
+  boxes.forEach((b, i) => {
+    const isHighlighted = i === highlightIdx;
+    const color = colors[i % colors.length];
+
+    if (b.polygon && b.polygon.length === 4) {
+      // Draw polygon
+      ctx.beginPath();
+      ctx.moveTo(b.polygon[0][0], b.polygon[0][1]);
+      for (let j = 1; j < b.polygon.length; j++) {
+        ctx.lineTo(b.polygon[j][0], b.polygon[j][1]);
+      }
+      ctx.closePath();
+      ctx.strokeStyle = isHighlighted ? 'rgba(255, 255, 255, 0.9)' : color;
+      ctx.lineWidth = isHighlighted ? 3 : 2;
+      ctx.stroke();
+      ctx.fillStyle = isHighlighted ? 'rgba(88, 166, 255, 0.15)' : 'rgba(88, 166, 255, 0.05)';
+      ctx.fill();
+    } else {
+      // Fallback: draw rect
+      ctx.strokeStyle = isHighlighted ? 'rgba(255, 255, 255, 0.9)' : color;
+      ctx.lineWidth = isHighlighted ? 3 : 2;
+      ctx.strokeRect(b.left, b.top, b.right - b.left, b.bottom - b.top);
+    }
+
+    // Label
+    const fontSize = Math.max(10, Math.min(14, canvas.width / 50));
+    ctx.font = `${fontSize}px sans-serif`;
+    const labelY = b.top > fontSize + 4 ? b.top - 4 : b.bottom + fontSize + 2;
+    ctx.fillStyle = isHighlighted ? 'rgba(255, 255, 255, 0.95)' : 'rgba(255, 255, 255, 0.7)';
+    const label = `${b.text.substring(0, 20)}${b.text.length > 20 ? '...' : ''} (${(b.confidence * 100).toFixed(0)}%)`;
+
+    // Background for label
+    const metrics = ctx.measureText(label);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    ctx.fillRect(b.left, labelY - fontSize, metrics.width + 4, fontSize + 4);
+    ctx.fillStyle = isHighlighted ? '#fff' : 'rgba(255, 255, 255, 0.85)';
+    ctx.fillText(label, b.left + 2, labelY);
+  });
+}
+
+function highlightBox(index) {
+  highlightedIndex = index;
+  if (!currentResult?.bounding_boxes) return;
+
+  // Update list highlighting
+  document.querySelectorAll('.bbox-item').forEach((el, i) => {
+    el.classList.toggle('selected', i === index);
+  });
+
+  // Redraw canvas
+  const vizCanvas = document.getElementById('vizCanvas');
+  if (vizCanvas.width > 0) {
+    drawBoxes(vizCanvas, currentResult.bounding_boxes, index);
+  }
+}
+
+// ── Tabs ────────────────────────────────────────────────────────────
+
+function switchTab(tabEl) {
+  const tabName = tabEl.dataset.tab;
+  tabEl.parentElement.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  tabEl.classList.add('active');
+  tabEl.closest('.card').querySelectorAll('.tab-panel').forEach(p => {
+    p.classList.toggle('active', p.id === `tab-${tabName}`);
+  });
+}
+
+// ── Confidence slider ───────────────────────────────────────────────
+
+document.getElementById('minConfidence').addEventListener('input', e => {
+  document.getElementById('confValue').textContent = `${e.target.value}%`;
+});
+
+// ── Utilities ───────────────────────────────────────────────────────
+
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function clearAll() {
+  currentImageBase64 = null;
+  currentResult = null;
+  highlightedIndex = -1;
+  previewImg.src = '';
+  imageContainer.style.display = 'none';
+  dropLabel.style.display = 'block';
+  document.getElementById('extractBtn').disabled = true;
+  document.getElementById('metricsGrid').style.display = 'none';
+  document.getElementById('extractedText').textContent = 'No results yet. Upload an image and click Extract Text.';
+  document.getElementById('extractedText').style.color = 'var(--text2)';
+  document.getElementById('bboxList').innerHTML = '<div style="color: var(--text2); font-size: 0.85rem; padding: 12px;">No bounding boxes yet.</div>';
+  document.getElementById('rawJson').textContent = 'No results yet.';
+  document.getElementById('vizContainer').style.display = 'none';
+  document.getElementById('vizPlaceholder').style.display = 'block';
+  document.getElementById('vizPlaceholder').textContent = 'Extract text from an image to see bounding boxes overlaid on the image.';
+}
+
+// ── Init ────────────────────────────────────────────────────────────
+
+checkHealth();
+</script>
+</body>
+</html>
