@@ -1,7 +1,7 @@
 {
   "name": "@web-vox/core",
   "version": "0.1.0",
-  "description": "OS-level TTS with audio capture — Web Speech API replacement",
+  "description": "Intelligent reading engine — multi-engine TTS with forced alignment, quality analysis, document synthesis, and OCR",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -11,9 +11,30 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./effects": {
+      "types": "./dist/effects/index.d.ts",
+      "import": "./dist/effects/index.js",
+      "require": "./dist/effects/index.cjs"
+    },
+    "./transport": {
+      "types": "./dist/transport/index.d.ts",
+      "import": "./dist/transport/index.js",
+      "require": "./dist/transport/index.cjs"
+    },
+    "./engines": {
+      "types": "./dist/engines/index.d.ts",
+      "import": "./dist/engines/index.js",
+      "require": "./dist/engines/index.cjs"
+    },
+    "./utils": {
+      "types": "./dist/utils/index.d.ts",
+      "import": "./dist/utils/index.js",
+      "require": "./dist/utils/index.cjs"
     }
   },
   "files": ["dist"],
+  "sideEffects": false,
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
@@ -24,5 +45,28 @@
     "tsup": "^8.0.0",
     "typescript": "^5.7.0"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "keywords": [
+    "tts",
+    "text-to-speech",
+    "speech-synthesis",
+    "forced-alignment",
+    "word-timestamps",
+    "audio-analysis",
+    "document-reader",
+    "ocr",
+    "web-speech-api",
+    "kokoro",
+    "piper",
+    "coqui",
+    "espeak"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/user/web-vox-pro",
+    "directory": "packages/core"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
 }

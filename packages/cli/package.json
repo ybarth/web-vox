@@ -1,0 +1,29 @@
+{
+  "name": "@web-vox/cli",
+  "version": "0.1.0",
+  "description": "CLI for web-vox-pro — manage TTS servers and synthesize from the command line",
+  "type": "module",
+  "bin": {
+    "web-vox": "./dist/index.js"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@web-vox/server": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.7.0"
+  },
+  "license": "MIT",
+  "keywords": ["tts", "text-to-speech", "cli"],
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

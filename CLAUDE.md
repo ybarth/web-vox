@@ -130,7 +130,44 @@ Web-vox-pro is a meta-TTS platform forked from web-vox. It transforms multiple o
   - Metrics bar (regions, confidence, processing time, image dimensions)
   - Direct HTTP mode to OCR server (standalone, no WebSocket needed)
 - Python deps: easyocr, Pillow (install in `tts-venv`)
-### Phase 6: SDK Packaging - PLANNED
+### Phase 6: SDK Packaging - COMPLETE
+- `@web-vox/core` polished for npm publishing:
+  - Sub-path exports: `@web-vox/core/effects`, `/transport`, `/engines`, `/utils`
+  - `sideEffects: false`, keywords, repository metadata, engine requirements
+  - Fixed `SynthesizeDocumentOptions.format` → `documentFormat` to avoid type conflict with `SynthesisOptions.format`
+- `@web-vox/server` — New Node.js package (`packages/server/`) for backend management:
+  - `ServerManager` class: start/stop/restart individual or all servers
+  - `ServerManager.fromProjectRoot()` factory for easy setup
+  - Health checking via HTTP probes (Python servers) and TCP probes (WS server)
+  - Child process management with graceful SIGTERM/SIGKILL shutdown
+  - Auto-detection of Rust binary (release/debug), Python venv
+  - Event emitter for log/error/exit events
+  - Reads `server_registry.json` and `device_config.json`
+- `@web-vox/cli` — CLI tool (`packages/cli/`) with `web-vox` binary:
+  - `web-vox start [servers...]` — start all or specific servers, keeps process alive
+  - `web-vox stop` — show running server status
+  - `web-vox status` — health-check all 11 servers with colored output
+  - `web-vox synth "text" [--voice id] [--rate n] [--output file]` — synthesize to WAV
+  - `web-vox voices` — list all available voices grouped by engine
+  - Built-in WAV encoder for PCM output
+- Examples updated:
+  - `examples/node/synthesize.ts` — basic Node.js synthesis with word timestamps
+  - `examples/node/document-reader.ts` — document analysis + progressive synthesis
+  - `examples/node/quality-check.ts` — quality analysis metrics
+  - `examples/electron/main.ts` — Electron integration pattern with ServerManager
+- Test workbench: `test-engines/sdk/index.html` (port 5400, standalone):
+  - 20-test suite across 5 categories: connection, synthesis, document, quality, OCR
+  - Run all or per-category; live pass/fail/skip status with timing
+  - Quick synthesis panel with voice/rate/alignment/quality controls, playback + word highlighting
+  - Sample text library (short, medium, markdown, dialogue, mixed, stress test)
+  - Real-time service health bar for all 5 backend services
+  - Tabbed results: metrics, word timestamps, quality analysis, audio player, raw JSON
+  - `npm run test:sdk` or `test-engines/sdk/serve.sh` to serve
+- Node.js test suites:
+  - `packages/server/test/server-manager.test.ts` — 10 tests (construction, config, health, process tracking)
+  - `packages/cli/test/cli.test.ts` — 7 tests (help, status, synth, error handling)
+  - `npm run test:node` to run all, or `test:server` / `test:cli` individually
+- Root `package.json` adds `web-vox`, `start`, `status`, `test:sdk`, `test:server`, `test:cli`, `test:node` scripts
 
 ## Development Patterns
 

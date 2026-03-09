@@ -386,7 +386,8 @@ export interface NativeOcrResult {
 // -- Phase 4: Progressive Document Synthesis Types --
 
 export interface SynthesizeDocumentOptions extends SynthesisOptions {
-  format?: string;
+  /** Document format: 'auto', 'plain', 'markdown', 'html' */
+  documentFormat?: string;
   useAi?: boolean;
   voiceScheme?: Record<string, unknown>;
 }

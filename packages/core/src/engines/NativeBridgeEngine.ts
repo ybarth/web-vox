@@ -447,7 +447,7 @@ export class NativeBridgeEngine implements EngineAdapter {
       pitch: options.pitch ?? 1.0,
       volume: options.volume ?? 1.0,
       alignment: options.alignment,
-      format: options.format ?? 'auto',
+      format: options.documentFormat ?? 'auto',
       use_ai: options.useAi ?? false,
       voice_scheme: options.voiceScheme,
     });

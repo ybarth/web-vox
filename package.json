@@ -11,7 +11,14 @@
     "typecheck": "turbo run typecheck",
     "clean": "turbo run clean",
     "build:rust": "cargo build --release",
-    "test:rust": "cargo test"
+    "test:rust": "cargo test",
+    "web-vox": "node packages/cli/dist/index.js",
+    "start": "node packages/cli/dist/index.js start",
+    "status": "node packages/cli/dist/index.js status",
+    "test:sdk": "python3 -m http.server 5400 --directory test-engines/sdk",
+    "test:server": "npx tsx --test packages/server/test/server-manager.test.ts",
+    "test:cli": "npx tsx --test packages/cli/test/cli.test.ts",
+    "test:node": "npx tsx --test packages/server/test/server-manager.test.ts packages/cli/test/cli.test.ts"
   },
   "packageManager": "npm@11.9.0",
   "devDependencies": {

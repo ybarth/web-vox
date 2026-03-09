@@ -1,0 +1,1335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Web-Vox Pro — SDK Test Workbench</title>
+<style>
+  :root {
+    --bg: #0d1117; --bg2: #161b22; --bg3: #21262d; --bg4: #30363d;
+    --fg: #e6edf3; --fg2: #8b949e; --fg3: #6e7681;
+    --accent: #58a6ff; --accent2: #3fb950; --warn: #d29922; --err: #f85149;
+    --purple: #bc8cff; --cyan: #39d2c0;
+    --radius: 8px; --gap: 12px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    background: var(--bg); color: var(--fg); line-height: 1.5; padding: 16px; }
+  h1 { font-size: 20px; font-weight: 600; }
+  h2 { font-size: 15px; font-weight: 600; color: var(--accent); margin-bottom: 8px; }
+  h3 { font-size: 13px; font-weight: 600; color: var(--fg2); margin: 12px 0 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  /* Layout */
+  .header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--bg4); }
+  .header .badge { background: var(--accent); color: var(--bg); padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+  .header .port { color: var(--fg3); font-size: 13px; margin-left: auto; }
+  .main-grid { display: grid; grid-template-columns: 360px 1fr; gap: var(--gap); }
+  @media (max-width: 1000px) { .main-grid { grid-template-columns: 1fr; } }
+
+  /* Cards */
+  .card { background: var(--bg2); border: 1px solid var(--bg4); border-radius: var(--radius); padding: 14px; margin-bottom: var(--gap); }
+  .card.collapsed .card-body { display: none; }
+  .card-head { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+  .card-head .toggle { color: var(--fg3); font-size: 11px; transition: transform 0.15s; }
+  .card.collapsed .card-head .toggle { transform: rotate(-90deg); }
+
+  /* Status dots */
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .dot.on { background: var(--accent2); box-shadow: 0 0 6px var(--accent2); }
+  .dot.off { background: var(--err); }
+  .dot.checking { background: var(--warn); animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  /* Status bar */
+  .status-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-size: 12px; }
+  .status-item { display: flex; align-items: center; gap: 4px; }
+
+  /* Buttons */
+  button { background: var(--bg3); color: var(--fg); border: 1px solid var(--bg4); border-radius: 6px;
+    padding: 6px 14px; font-size: 13px; cursor: pointer; transition: background 0.15s; }
+  button:hover { background: var(--bg4); }
+  button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 600; }
+  button.primary:hover { background: #79c0ff; }
+  button.success { background: var(--accent2); color: var(--bg); border-color: var(--accent2); }
+  button.danger { background: var(--err); color: #fff; border-color: var(--err); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-sm { padding: 3px 10px; font-size: 12px; }
+  .btn-group { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+
+  /* Inputs */
+  textarea, input, select { background: var(--bg3); color: var(--fg); border: 1px solid var(--bg4);
+    border-radius: 6px; padding: 6px 10px; font-size: 13px; font-family: inherit; width: 100%; }
+  textarea { resize: vertical; min-height: 80px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; }
+  select { cursor: pointer; }
+  label { font-size: 12px; color: var(--fg2); display: block; margin-bottom: 4px; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+
+  /* Test suite */
+  .test-suite { counter-reset: test; }
+  .test-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--bg3);
+    font-size: 13px; counter-increment: test; }
+  .test-row::before { content: counter(test) "."; color: var(--fg3); min-width: 22px; font-size: 11px; }
+  .test-name { flex: 1; }
+  .test-time { color: var(--fg3); font-size: 11px; min-width: 50px; text-align: right; }
+  .test-status { min-width: 20px; text-align: center; font-size: 14px; }
+  .test-status.pass { color: var(--accent2); }
+  .test-status.fail { color: var(--err); }
+  .test-status.running { color: var(--warn); animation: pulse 0.8s infinite; }
+  .test-status.skip { color: var(--fg3); }
+
+  /* Results panel */
+  .result-box { background: var(--bg); border: 1px solid var(--bg4); border-radius: 6px; padding: 10px;
+    font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; max-height: 400px;
+    overflow-y: auto; white-space: pre-wrap; word-break: break-word; }
+  .result-box.scrollable { max-height: 600px; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 0; margin-bottom: -1px; position: relative; z-index: 1; flex-wrap: wrap; }
+  .tab { padding: 6px 14px; font-size: 12px; cursor: pointer; border: 1px solid transparent;
+    border-radius: 6px 6px 0 0; color: var(--fg2); }
+  .tab.active { background: var(--bg2); border-color: var(--bg4); border-bottom-color: var(--bg2); color: var(--fg); }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* Summary bar */
+  .summary { display: flex; gap: 16px; padding: 10px 14px; background: var(--bg3); border-radius: var(--radius);
+    font-size: 13px; margin-bottom: var(--gap); flex-wrap: wrap; }
+  .summary .val { font-weight: 600; color: var(--accent); }
+  .summary .err-val { font-weight: 600; color: var(--err); }
+
+  /* Log */
+  #log { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11px; max-height: 220px;
+    overflow-y: auto; background: var(--bg); border: 1px solid var(--bg4); border-radius: 6px; padding: 8px; }
+  .log-entry { padding: 1px 0; }
+  .log-entry .ts { color: var(--fg3); }
+  .log-entry.ok .msg { color: var(--accent2); }
+  .log-entry.err .msg { color: var(--err); }
+  .log-entry.info .msg { color: var(--fg2); }
+  .log-entry.warn .msg { color: var(--warn); }
+
+  /* Metrics grid */
+  .metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; margin-top: 8px; }
+  .metric { background: var(--bg3); border-radius: 6px; padding: 8px 10px; }
+  .metric .label { font-size: 10px; color: var(--fg3); text-transform: uppercase; letter-spacing: 0.3px; }
+  .metric .value { font-size: 16px; font-weight: 600; color: var(--accent); }
+  .metric .value.warn { color: var(--warn); }
+  .metric .value.good { color: var(--accent2); }
+  .metric .value.bad { color: var(--err); }
+
+  /* Audio player */
+  .player { display: flex; align-items: center; gap: 8px; padding: 10px; background: var(--bg3);
+    border-radius: var(--radius); margin-top: 8px; }
+  .player .time { font-size: 12px; color: var(--fg2); min-width: 80px; }
+
+  /* Word highlights */
+  .word-view { line-height: 2; font-size: 14px; padding: 8px; }
+  .word-view .word { padding: 2px 1px; border-radius: 3px; transition: background 0.1s; cursor: default; }
+  .word-view .word.active { background: var(--accent); color: var(--bg); }
+  .word-view .word:hover { background: var(--bg4); }
+
+  /* Element type badges */
+  .el-badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+  .el-heading { background: #1f3d5e; color: #58a6ff; }
+  .el-paragraph { background: #1f2d1f; color: #3fb950; }
+  .el-dialogue { background: #3d2f1f; color: #d29922; }
+  .el-list_item { background: #2d1f3d; color: #bc8cff; }
+  .el-blockquote { background: #1f3d3d; color: #39d2c0; }
+  .el-code_block { background: #2d2d2d; color: #e6edf3; }
+  .el-emphasis { background: #3d1f2d; color: #f778ba; }
+  .el-separator { background: #2d2d2d; color: #6e7681; }
+
+  /* OCR canvas */
+  .ocr-canvas-wrap { position: relative; display: inline-block; max-width: 100%; margin-top: 8px; }
+  .ocr-canvas-wrap canvas { max-width: 100%; border: 1px solid var(--bg4); border-radius: 6px; }
+
+  /* Image drop zone */
+  .drop-zone { border: 2px dashed var(--bg4); border-radius: var(--radius); padding: 24px; text-align: center;
+    color: var(--fg3); cursor: pointer; transition: border-color 0.2s; }
+  .drop-zone:hover, .drop-zone.over { border-color: var(--accent); color: var(--accent); }
+  .drop-zone input { display: none; }
+
+  /* Progress bar */
+  .progress-bar { height: 6px; background: var(--bg4); border-radius: 3px; overflow: hidden; margin-top: 8px; }
+  .progress-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.3s; }
+
+  /* Doc elements list */
+  .doc-el { padding: 6px 8px; border-bottom: 1px solid var(--bg3); font-size: 13px; display: flex; align-items: center; gap: 8px; }
+  .doc-el .preview { flex: 1; color: var(--fg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .doc-el .voice-params { font-size: 11px; color: var(--fg3); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Web-Vox Pro</h1>
+  <span class="badge">SDK Test Workbench</span>
+  <span class="badge" style="background:var(--purple)">Phase 6</span>
+  <span class="port">port 5400</span>
+</div>
+
+<!-- Status Bar -->
+<div class="card" style="padding:10px 14px">
+  <div class="status-bar" id="statusBar">
+    <span style="color:var(--fg3);font-weight:600;margin-right:4px">Services:</span>
+    <span class="status-item"><span class="dot checking" id="dot-ws"></span>ws-server</span>
+    <span class="status-item"><span class="dot checking" id="dot-alignment"></span>alignment</span>
+    <span class="status-item"><span class="dot checking" id="dot-quality"></span>quality</span>
+    <span class="status-item"><span class="dot checking" id="dot-doc"></span>doc-analyzer</span>
+    <span class="status-item"><span class="dot checking" id="dot-ocr"></span>ocr</span>
+    <button class="btn-sm" onclick="checkAllHealth()" style="margin-left:auto">Refresh</button>
+  </div>
+</div>
+
+<!-- Summary bar -->
+<div class="summary" id="summary" style="display:none">
+  <span>Tests: <span class="val" id="sumTotal">0</span></span>
+  <span>Passed: <span class="val" id="sumPass">0</span></span>
+  <span>Failed: <span class="err-val" id="sumFail">0</span></span>
+  <span>Skipped: <span id="sumSkip" style="color:var(--fg3)">0</span></span>
+  <span>Time: <span class="val" id="sumTime">0ms</span></span>
+</div>
+
+<div class="main-grid">
+  <!-- ===== LEFT PANEL ===== -->
+  <div class="left">
+
+    <!-- Test Suite Runner -->
+    <div class="card">
+      <div class="card-head" onclick="toggleCard(this)"><span class="toggle">▼</span><h2 style="margin:0">Test Suite</h2></div>
+      <div class="card-body">
+        <div class="btn-group" style="margin-top:8px">
+          <button class="primary" onclick="runAllTests()" id="btnRunAll">Run All Tests</button>
+          <button onclick="runCat('connection')">Connection</button>
+          <button onclick="runCat('synthesis')">Synthesis</button>
+          <button onclick="runCat('document')">Document</button>
+          <button onclick="runCat('quality')">Quality</button>
+          <button onclick="runCat('ocr')">OCR</button>
+        </div>
+        <h3>Connection &amp; Transport</h3>
+        <div class="test-suite" id="tests-connection"></div>
+        <h3>Synthesis</h3>
+        <div class="test-suite" id="tests-synthesis"></div>
+        <h3>Document Analysis</h3>
+        <div class="test-suite" id="tests-document"></div>
+        <h3>Quality Analysis</h3>
+        <div class="test-suite" id="tests-quality"></div>
+        <h3>OCR / Vision</h3>
+        <div class="test-suite" id="tests-ocr"></div>
+      </div>
+    </div>
+
+    <!-- Quick Synth -->
+    <div class="card">
+      <div class="card-head" onclick="toggleCard(this)"><span class="toggle">▼</span><h2 style="margin:0">Quick Synthesis</h2></div>
+      <div class="card-body">
+        <label>Text</label>
+        <textarea id="synthText" rows="5">Hello! This is the web-vox-pro SDK test workbench. Testing forced alignment and quality analysis.</textarea>
+        <div class="form-row">
+          <div><label>Voice</label><select id="voiceSelect"><option value="">Default</option></select></div>
+          <div><label>Rate</label><input type="number" id="rateInput" value="1.0" min="0.1" max="6" step="0.1"></div>
+        </div>
+        <div class="form-row">
+          <div><label>Alignment</label>
+            <select id="alignSelect">
+              <option value="none">None</option>
+              <option value="word" selected>Word</option>
+              <option value="word+syllable">Word + Syllable</option>
+              <option value="word+phoneme">Word + Phoneme</option>
+              <option value="full">Full</option>
+            </select></div>
+          <div><label>Quality</label>
+            <select id="qualitySelect">
+              <option value="off">Off</option>
+              <option value="on">All analyzers</option>
+            </select></div>
+        </div>
+        <div class="btn-group">
+          <button class="primary" onclick="quickSynth()">Synthesize</button>
+          <button onclick="quickSynth(true)">Synth + Play</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Test Files -->
+    <div class="card">
+      <div class="card-head" onclick="toggleCard(this)"><span class="toggle">▼</span><h2 style="margin:0">Test Files</h2></div>
+      <div class="card-body">
+        <h3>Built-in Samples</h3>
+        <div class="btn-group">
+          <button class="btn-sm" onclick="loadSample('short')">Short</button>
+          <button class="btn-sm" onclick="loadSample('medium')">Medium</button>
+          <button class="btn-sm" onclick="loadSample('edge')">Edge Cases</button>
+          <button class="btn-sm" onclick="loadSample('stress')">Stress</button>
+        </div>
+        <h3>Document Files</h3>
+        <div class="btn-group" id="fileButtons"></div>
+        <h3>Custom Upload</h3>
+        <div class="drop-zone" id="textDropZone" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="handleTextDrop(event)">
+          Drop .txt / .md / .html file here
+          <input type="file" id="textFileInput" accept=".txt,.md,.html,.json" onchange="handleTextFile(this.files[0])">
+        </div>
+      </div>
+    </div>
+
+    <!-- Document Analysis -->
+    <div class="card">
+      <div class="card-head" onclick="toggleCard(this)"><span class="toggle">▼</span><h2 style="margin:0">Document Analysis</h2></div>
+      <div class="card-body">
+        <div class="form-row">
+          <div><label>Format</label>
+            <select id="docFormat">
+              <option value="auto">Auto-detect</option>
+              <option value="plain">Plain Text</option>
+              <option value="markdown">Markdown</option>
+              <option value="html">HTML</option>
+            </select></div>
+          <div><label>AI Enhancement</label>
+            <select id="docAi">
+              <option value="off">Off</option>
+              <option value="on">On (requires Ollama)</option>
+            </select></div>
+        </div>
+        <div class="btn-group">
+          <button class="primary" onclick="analyzeDocument()">Analyze Structure</button>
+          <button onclick="synthesizeDocument()">Synthesize Document</button>
+        </div>
+        <div class="progress-bar" id="docProgress" style="display:none"><div class="progress-fill" id="docProgressFill" style="width:0%"></div></div>
+        <div id="docStatus" style="font-size:12px;color:var(--fg3);margin-top:4px"></div>
+      </div>
+    </div>
+
+    <!-- OCR Panel -->
+    <div class="card">
+      <div class="card-head" onclick="toggleCard(this)"><span class="toggle">▼</span><h2 style="margin:0">OCR / Vision</h2></div>
+      <div class="card-body">
+        <h3>Test Images</h3>
+        <div class="btn-group" id="ocrImageButtons"></div>
+        <h3>Upload Image</h3>
+        <div class="drop-zone" id="imgDropZone" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="handleImgDrop(event)">
+          Drop PNG / JPG / WebP here
+          <input type="file" id="imgFileInput" accept="image/*" onchange="handleImgFile(this.files[0])">
+        </div>
+        <div class="form-row" style="margin-top:8px">
+          <div><label>Min Confidence</label><input type="number" id="ocrConfidence" value="0" min="0" max="1" step="0.05"></div>
+          <div><label>&nbsp;</label><button class="primary" onclick="runOcr()" style="width:100%">Extract Text</button></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Log -->
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <h2 style="margin:0">Log</h2>
+        <button class="btn-sm" onclick="clearLog()" style="margin-left:auto">Clear</button>
+      </div>
+      <div id="log"></div>
+    </div>
+  </div>
+
+  <!-- ===== RIGHT PANEL ===== -->
+  <div class="right">
+    <!-- Result tabs -->
+    <div class="card">
+      <div class="tabs" id="mainTabs">
+        <div class="tab active" data-tab="result">Result</div>
+        <div class="tab" data-tab="words">Word Timestamps</div>
+        <div class="tab" data-tab="quality-tab">Quality</div>
+        <div class="tab" data-tab="audio">Audio</div>
+        <div class="tab" data-tab="doc-tab">Document</div>
+        <div class="tab" data-tab="ocr-tab">OCR</div>
+        <div class="tab" data-tab="json">JSON</div>
+      </div>
+
+      <!-- Result -->
+      <div class="tab-content active" id="tab-result">
+        <div class="metrics" id="resultMetrics" style="display:none"></div>
+        <div id="resultText" class="result-box" style="margin-top:8px;min-height:100px;color:var(--fg3)">
+          Run a test or synthesis to see results here.
+        </div>
+      </div>
+
+      <!-- Words -->
+      <div class="tab-content" id="tab-words">
+        <div class="word-view" id="wordView"></div>
+        <div class="result-box scrollable" id="wordList" style="margin-top:8px"></div>
+      </div>
+
+      <!-- Quality -->
+      <div class="tab-content" id="tab-quality-tab">
+        <div class="metrics" id="qualityMetrics"></div>
+        <div class="result-box" id="qualityDetail" style="margin-top:8px"></div>
+      </div>
+
+      <!-- Audio -->
+      <div class="tab-content" id="tab-audio">
+        <div class="metrics" id="audioMetrics"></div>
+        <div class="player" id="player" style="display:none">
+          <button id="btnPlay" onclick="togglePlayback()">▶</button>
+          <span class="time" id="playTime">0:00 / 0:00</span>
+        </div>
+        <div class="word-view" id="playbackWords" style="margin-top:12px"></div>
+      </div>
+
+      <!-- Document -->
+      <div class="tab-content" id="tab-doc-tab">
+        <div class="metrics" id="docMetrics"></div>
+        <div id="docElements" style="margin-top:8px;max-height:500px;overflow-y:auto"></div>
+      </div>
+
+      <!-- OCR -->
+      <div class="tab-content" id="tab-ocr-tab">
+        <div class="metrics" id="ocrMetrics"></div>
+        <div class="result-box" id="ocrText" style="margin-top:8px;min-height:60px"></div>
+        <div class="ocr-canvas-wrap" style="margin-top:8px">
+          <canvas id="ocrCanvas" width="1" height="1" style="display:none"></canvas>
+        </div>
+        <div class="result-box scrollable" id="ocrBoxes" style="margin-top:8px;display:none"></div>
+      </div>
+
+      <!-- JSON -->
+      <div class="tab-content" id="tab-json">
+        <div class="result-box scrollable" id="jsonView"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== GLOBALS =====
+const WS_URL = 'ws://localhost:21740';
+const SERVICES = {
+  ws:        { port: 21740, path: null },
+  alignment: { port: 21747, path: '/health' },
+  quality:   { port: 21748, path: '/health' },
+  doc:       { port: 21750, path: '/health' },
+  ocr:       { port: 21751, path: '/health' },
+};
+
+let ws = null;
+let pendingRequests = new Map();
+let messageHandlers = [];
+let voices = [];
+let lastResult = null;
+let audioCtx = null;
+let playbackSource = null;
+let playbackStartTime = 0;
+let playbackBuffer = null;
+let currentOcrImage = null; // { b64, width, height }
+
+// ===== TEST FILES =====
+const TEST_FILES = [
+  { name: 'Short Plain', file: 'test-files/short-plain.txt', format: 'plain' },
+  { name: 'Narrative', file: 'test-files/narrative.txt', format: 'plain' },
+  { name: 'Dialogue', file: 'test-files/dialogue-heavy.txt', format: 'plain' },
+  { name: 'Poetry', file: 'test-files/poetry.txt', format: 'plain' },
+  { name: 'Edge Cases', file: 'test-files/edge-cases.txt', format: 'plain' },
+  { name: 'Technical Docs', file: 'test-files/technical-docs.md', format: 'markdown' },
+  { name: 'Recipe', file: 'test-files/recipe.md', format: 'markdown' },
+  { name: 'Mixed Content', file: 'test-files/mixed-content.md', format: 'markdown' },
+  { name: 'Presentation', file: 'test-files/presentation.md', format: 'markdown' },
+  { name: 'News Article', file: 'test-files/news-article.html', format: 'html' },
+];
+
+const TEST_IMAGES = [
+  { name: 'Clean Text', file: 'test-images/01_clean_text.png' },
+  { name: 'Article', file: 'test-images/02_multi_paragraph.png' },
+  { name: 'Receipt', file: 'test-images/03_receipt.png' },
+  { name: 'Two Columns', file: 'test-images/04_two_columns.png' },
+  { name: 'Mixed Sizes', file: 'test-images/05_mixed_sizes.png' },
+  { name: 'Dark BG', file: 'test-images/06_dark_background.png' },
+  { name: 'Code', file: 'test-images/07_code_block.png' },
+  { name: 'Table', file: 'test-images/08_table.png' },
+  { name: 'Multilingual', file: 'test-images/09_multilingual.png' },
+  { name: 'Noisy', file: 'test-images/10_noisy.png' },
+  { name: 'Form', file: 'test-images/11_form.png' },
+  { name: 'Sign', file: 'test-images/12_sign.png' },
+];
+
+// ===== BUILT-IN SAMPLES =====
+const SAMPLES = {
+  short: 'Hello world! This is a short test.',
+  medium: 'The quick brown fox jumps over the lazy dog. Pack my box with five dozen liquor jugs. How vexingly quick daft zebras jump! The five boxing wizards jump quickly. Bright vixens jump; dozy fowl quack.',
+  edge: `Numbers: $1,234.56 and 3.14159. Phone: (555) 867-5309.
+Abbreviations: Dr. Smith at NASA's JPL via the API.
+Special chars: Café, résumé, naïve, über, piñata.
+"Hello," she said — and then... "goodbye!"
+Very short: Hi. OK. Yes!
+Repeated: Buffalo buffalo Buffalo buffalo buffalo buffalo Buffalo buffalo.`,
+  stress: 'A'.repeat(20) + ' ' + 'B'.repeat(20) + ' ' + 'C'.repeat(20) + ' The extraordinarily comprehensive investigation conducted by the internationally renowned team of multidisciplinary researchers yielded unprecedented insights into the complex interplay between prosodic features and listener perception. ' + 'The quick brown fox jumps over the lazy dog. '.repeat(8),
+};
+
+// ===== LOGGING =====
+function log(msg, cls = 'info') {
+  const el = document.getElementById('log');
+  const ts = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 });
+  el.innerHTML += `<div class="log-entry ${cls}"><span class="ts">${ts}</span> <span class="msg">${esc(msg)}</span></div>`;
+  el.scrollTop = el.scrollHeight;
+  if (el.children.length > 200) el.firstChild.remove();
+}
+function clearLog() { document.getElementById('log').innerHTML = ''; }
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ===== CARD COLLAPSE =====
+function toggleCard(head) { head.closest('.card').classList.toggle('collapsed'); }
+
+// ===== TABS =====
+document.getElementById('mainTabs').addEventListener('click', (e) => {
+  const tab = e.target.closest('.tab');
+  if (!tab) return;
+  document.querySelectorAll('#mainTabs .tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  tab.classList.add('active');
+  document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+});
+
+// ===== HEALTH CHECKS =====
+async function checkHealth(name) {
+  const dot = document.getElementById('dot-' + name);
+  dot.className = 'dot checking';
+  const svc = SERVICES[name];
+  try {
+    if (!svc.path) {
+      await new Promise((res, rej) => {
+        const s = new WebSocket(`ws://localhost:${svc.port}`);
+        const t = setTimeout(() => { s.close(); rej(); }, 2000);
+        s.onopen = () => { clearTimeout(t); s.close(); res(); };
+        s.onerror = () => { clearTimeout(t); rej(); };
+      });
+      dot.className = 'dot on'; return true;
+    } else {
+      const r = await fetch(`http://127.0.0.1:${svc.port}${svc.path}`, { signal: AbortSignal.timeout(3000) });
+      dot.className = r.ok ? 'dot on' : 'dot off'; return r.ok;
+    }
+  } catch { dot.className = 'dot off'; return false; }
+}
+async function checkAllHealth() {
+  const results = await Promise.all(Object.keys(SERVICES).map(k => checkHealth(k).then(ok => [k, ok])));
+  const online = results.filter(([,ok]) => ok).length;
+  log(`Health: ${online}/${results.length} services online`, online === results.length ? 'ok' : 'warn');
+  return Object.fromEntries(results);
+}
+
+// ===== WEBSOCKET =====
+function connectWS() {
+  return new Promise((resolve, reject) => {
+    if (ws && ws.readyState === WebSocket.OPEN) { resolve(ws); return; }
+    ws = new WebSocket(WS_URL);
+    const timer = setTimeout(() => { ws.close(); reject(new Error('WS timeout')); }, 5000);
+    ws.onopen = () => { clearTimeout(timer); log('WebSocket connected', 'ok'); resolve(ws); };
+    ws.onerror = () => { clearTimeout(timer); reject(new Error('WS connection failed')); };
+    ws.onclose = () => { ws = null; };
+    ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        messageHandlers.forEach(h => h(msg));
+        const id = msg.id;
+        const TERMINAL = ['synthesis_complete','voice_list','error','system_info','voice_validation',
+          'piper_catalog','piper_download_complete','voice_samples','voice_sample_result',
+          'server_manage_result','server_stats','document_analysis','document_synthesis_complete','ocr_result'];
+        if (id && pendingRequests.has(id)) {
+          if (TERMINAL.includes(msg.type)) {
+            const p = pendingRequests.get(id);
+            pendingRequests.delete(id);
+            p.resolve(msg);
+          }
+        } else if (!id && TERMINAL.includes(msg.type)) {
+          for (const [rid, p] of pendingRequests) { pendingRequests.delete(rid); p.resolve(msg); break; }
+        }
+      } catch {}
+    };
+  });
+}
+
+function wsSend(msg) {
+  return new Promise((resolve, reject) => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) { reject(new Error('WS not connected')); return; }
+    const id = msg.id || crypto.randomUUID();
+    msg.id = id;
+    pendingRequests.set(id, { resolve, reject });
+    ws.send(JSON.stringify(msg));
+    setTimeout(() => { if (pendingRequests.has(id)) { pendingRequests.delete(id); reject(new Error('Request timeout')); } }, 30000);
+  });
+}
+
+function collectMessages(id, types) {
+  const collected = {}; types.forEach(t => collected[t] = []);
+  const handler = (msg) => { if (msg.id === id && types.includes(msg.type)) collected[msg.type].push(msg); };
+  messageHandlers.push(handler);
+  return { collected, cleanup: () => { messageHandlers = messageHandlers.filter(h => h !== handler); } };
+}
+
+// ===== AUDIO =====
+function decodeBase64Pcm(b64) {
+  const bin = atob(b64); const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Float32Array(bytes.buffer);
+}
+
+function buildAudioBuffer(chunks, sampleRate, channels) {
+  const sorted = chunks.sort((a, b) => a.sequence - b.sequence);
+  const arrays = sorted.map(c => decodeBase64Pcm(c.data_base64));
+  const totalLen = arrays.reduce((s, a) => s + a.length, 0);
+  const samples = new Float32Array(totalLen);
+  let off = 0; for (const a of arrays) { samples.set(a, off); off += a.length; }
+  if (!audioCtx) audioCtx = new AudioContext();
+  const buf = audioCtx.createBuffer(channels, samples.length / channels, sampleRate);
+  buf.getChannelData(0).set(samples);
+  return { samples, buffer: buf };
+}
+
+function togglePlayback() {
+  if (!playbackBuffer) return;
+  if (!audioCtx) audioCtx = new AudioContext();
+  if (playbackSource) { playbackSource.stop(); playbackSource = null; document.getElementById('btnPlay').textContent = '▶'; return; }
+  playbackSource = audioCtx.createBufferSource();
+  playbackSource.buffer = playbackBuffer;
+  playbackSource.connect(audioCtx.destination);
+  playbackStartTime = audioCtx.currentTime;
+  playbackSource.start();
+  playbackSource.onended = () => { playbackSource = null; document.getElementById('btnPlay').textContent = '▶'; };
+  document.getElementById('btnPlay').textContent = '⏹';
+  updatePlaybackTime();
+}
+
+function updatePlaybackTime() {
+  if (!playbackSource || !playbackBuffer) return;
+  const elapsed = audioCtx.currentTime - playbackStartTime;
+  const total = playbackBuffer.duration;
+  document.getElementById('playTime').textContent = `${fmtTime(elapsed)} / ${fmtTime(total)}`;
+  if (elapsed < total) requestAnimationFrame(updatePlaybackTime);
+  if (lastResult?.wordTimestamps) {
+    const ms = elapsed * 1000;
+    document.querySelectorAll('#playbackWords .word').forEach((w, i) => {
+      const wt = lastResult.wordTimestamps[i];
+      w.classList.toggle('active', wt && ms >= wt.startTimeMs && ms < wt.endTimeMs);
+    });
+  }
+}
+
+function fmtTime(s) { const m = Math.floor(s / 60); return `${m}:${Math.floor(s % 60).toString().padStart(2,'0')}`; }
+
+// ===== LOAD SAMPLES / FILES =====
+function loadSample(name) { document.getElementById('synthText').value = SAMPLES[name] || ''; log(`Loaded sample: ${name}`); }
+
+async function loadTestFile(idx) {
+  const tf = TEST_FILES[idx];
+  try {
+    const resp = await fetch(tf.file);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const text = await resp.text();
+    document.getElementById('synthText').value = text;
+    document.getElementById('docFormat').value = tf.format;
+    log(`Loaded: ${tf.name} (${text.length} chars, ${tf.format})`, 'ok');
+  } catch (err) { log(`Failed to load ${tf.name}: ${err.message}`, 'err'); }
+}
+
+function handleTextDrop(e) {
+  e.preventDefault(); e.currentTarget.classList.remove('over');
+  const file = e.dataTransfer.files[0];
+  if (file) handleTextFile(file);
+}
+function handleTextFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    document.getElementById('synthText').value = reader.result;
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (ext === 'md') document.getElementById('docFormat').value = 'markdown';
+    else if (ext === 'html' || ext === 'htm') document.getElementById('docFormat').value = 'html';
+    else document.getElementById('docFormat').value = 'plain';
+    log(`Loaded file: ${file.name} (${reader.result.length} chars)`, 'ok');
+  };
+  reader.readAsText(file);
+}
+
+// ===== OCR IMAGE LOADING =====
+async function loadTestImage(idx) {
+  const ti = TEST_IMAGES[idx];
+  try {
+    const resp = await fetch(ti.file);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const blob = await resp.blob();
+    await processImageBlob(blob, ti.name);
+  } catch (err) { log(`Failed to load ${ti.name}: ${err.message}`, 'err'); }
+}
+
+function handleImgDrop(e) {
+  e.preventDefault(); e.currentTarget.classList.remove('over');
+  const file = e.dataTransfer.files[0];
+  if (file) handleImgFile(file);
+}
+
+function handleImgFile(file) {
+  if (!file) return;
+  processImageBlob(file, file.name);
+}
+
+async function processImageBlob(blob, name) {
+  const b64 = await new Promise(res => {
+    const r = new FileReader(); r.onload = () => res(r.result.split(',')[1]); r.readAsDataURL(blob);
+  });
+  const img = new Image();
+  img.onload = () => {
+    currentOcrImage = { b64, width: img.naturalWidth, height: img.naturalHeight, name };
+    // Draw preview
+    const canvas = document.getElementById('ocrCanvas');
+    canvas.style.display = 'block';
+    canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+    canvas.getContext('2d').drawImage(img, 0, 0);
+    log(`Image loaded: ${name} (${img.naturalWidth}×${img.naturalHeight})`, 'ok');
+    // Switch to OCR tab
+    document.querySelector('[data-tab="ocr-tab"]').click();
+  };
+  img.src = URL.createObjectURL(blob);
+}
+
+// ===== OCR =====
+async function runOcr() {
+  if (!currentOcrImage) { log('No image loaded', 'err'); return; }
+  const minConf = parseFloat(document.getElementById('ocrConfidence').value) || 0;
+  log(`Running OCR on ${currentOcrImage.name}...`);
+  try {
+    await connectWS();
+    const id = crypto.randomUUID();
+    const resp = await wsSend({ type: 'extract_text', id, image_base64: currentOcrImage.b64, image_format: 'png', min_confidence: minConf });
+    if (resp.type === 'error') { log('OCR error: ' + (resp.message || 'unknown'), 'err'); return; }
+    showOcrResult(resp);
+    log(`OCR: ${resp.total_regions} regions, ${(resp.confidence*100).toFixed(1)}% confidence, ${resp.processing_time_ms}ms`, 'ok');
+  } catch (err) { log('OCR failed: ' + err.message, 'err'); }
+}
+
+function showOcrResult(resp) {
+  // Metrics
+  document.getElementById('ocrMetrics').innerHTML = `
+    <div class="metric"><div class="label">Regions</div><div class="value">${resp.total_regions}</div></div>
+    <div class="metric"><div class="label">Confidence</div><div class="value ${resp.confidence >= 0.8 ? 'good' : 'warn'}">${(resp.confidence*100).toFixed(1)}%</div></div>
+    <div class="metric"><div class="label">Time</div><div class="value">${resp.processing_time_ms}ms</div></div>
+    <div class="metric"><div class="label">Image</div><div class="value">${resp.image_width}×${resp.image_height}</div></div>
+  `;
+  // Text
+  document.getElementById('ocrText').textContent = resp.text || '(no text extracted)';
+  // Bounding boxes overlay
+  const canvas = document.getElementById('ocrCanvas');
+  if (canvas.style.display !== 'none' && currentOcrImage) {
+    const ctx = canvas.getContext('2d');
+    // Redraw original image
+    const img = new Image();
+    img.onload = () => {
+      ctx.drawImage(img, 0, 0);
+      const colors = ['#58a6ff','#3fb950','#bc8cff','#d29922','#f85149','#39d2c0'];
+      (resp.bounding_boxes || []).forEach((box, i) => {
+        const color = colors[i % colors.length];
+        ctx.strokeStyle = color; ctx.lineWidth = 2;
+        if (box.polygon && box.polygon.length >= 4) {
+          ctx.beginPath();
+          ctx.moveTo(box.polygon[0][0], box.polygon[0][1]);
+          for (let j = 1; j < box.polygon.length; j++) ctx.lineTo(box.polygon[j][0], box.polygon[j][1]);
+          ctx.closePath(); ctx.stroke();
+        } else {
+          ctx.strokeRect(box.left, box.top, box.width, box.height);
+        }
+        ctx.fillStyle = color; ctx.font = '11px sans-serif';
+        const label = `${box.text.substring(0, 20)} (${(box.confidence*100).toFixed(0)}%)`;
+        ctx.fillText(label, box.left, box.top - 4);
+      });
+    };
+    img.src = 'data:image/png;base64,' + currentOcrImage.b64;
+  }
+  // Box list
+  const boxesEl = document.getElementById('ocrBoxes');
+  boxesEl.style.display = 'block';
+  boxesEl.textContent = (resp.bounding_boxes || []).map((b, i) =>
+    `[${i}] "${b.text}" conf=${(b.confidence*100).toFixed(1)}% pos=(${b.left},${b.top}) size=${b.width}×${b.height}`
+  ).join('\n');
+  // JSON
+  document.getElementById('jsonView').textContent = JSON.stringify(resp, null, 2);
+  showResult(`OCR: ${resp.total_regions} regions, "${(resp.text || '').substring(0, 80)}..."`);
+}
+
+// ===== DOCUMENT ANALYSIS =====
+async function analyzeDocument() {
+  const text = document.getElementById('synthText').value.trim();
+  if (!text) { log('No text to analyze', 'err'); return; }
+  const format = document.getElementById('docFormat').value;
+  const useAi = document.getElementById('docAi').value === 'on';
+  log(`Analyzing document (${format})...`);
+  try {
+    await connectWS();
+    const id = crypto.randomUUID();
+    const resp = await wsSend({ type: 'analyze_document', id, text, format, use_ai: useAi });
+    if (resp.type === 'error') { log('Analysis error: ' + (resp.message || ''), 'err'); return; }
+    showDocResult(resp);
+    log(`Analysis: ${resp.format}, ${resp.elements?.length || 0} elements`, 'ok');
+    document.querySelector('[data-tab="doc-tab"]').click();
+  } catch (err) { log('Analysis failed: ' + err.message, 'err'); }
+}
+
+async function synthesizeDocument() {
+  const text = document.getElementById('synthText').value.trim();
+  if (!text) { log('No text to synthesize', 'err'); return; }
+  const format = document.getElementById('docFormat').value;
+  const voice = document.getElementById('voiceSelect').value || undefined;
+  const rate = parseFloat(document.getElementById('rateInput').value) || 1.0;
+  const alignment = document.getElementById('alignSelect').value;
+  const useAi = document.getElementById('docAi').value === 'on';
+
+  log(`Synthesizing document (${format})...`);
+  document.getElementById('docProgress').style.display = 'block';
+  document.getElementById('docProgressFill').style.width = '0%';
+  document.getElementById('docStatus').textContent = 'Starting...';
+
+  try {
+    await connectWS();
+    const id = crypto.randomUUID();
+    const { collected, cleanup } = collectMessages(id, ['audio_chunk', 'word_boundary', 'element_start', 'element_complete', 'document_progress']);
+
+    // Track progress
+    const progressHandler = (msg) => {
+      if (msg.id === id && msg.type === 'document_progress') {
+        const pct = (msg.progress * 100).toFixed(0);
+        document.getElementById('docProgressFill').style.width = pct + '%';
+        document.getElementById('docStatus').textContent = `${msg.elements_completed}/${msg.total_elements} elements (${pct}%)`;
+      }
+    };
+    messageHandlers.push(progressHandler);
+
+    const req = { type: 'synthesize_document', id, text, rate, alignment, format, use_ai: useAi };
+    if (voice) req.voice_id = voice;
+    const resp = await wsSend(req);
+    messageHandlers = messageHandlers.filter(h => h !== progressHandler);
+
+    if (resp.type === 'error') { log('Doc synthesis error: ' + (resp.message || ''), 'err'); cleanup(); return; }
+
+    document.getElementById('docProgressFill').style.width = '100%';
+    document.getElementById('docStatus').textContent = `Complete — ${(resp.total_duration_ms / 1000).toFixed(2)}s`;
+
+    // Build audio
+    const chunks = collected.audio_chunk;
+    const sr = chunks[0]?.sample_rate || 22050;
+    const { samples, buffer } = buildAudioBuffer(chunks, sr, 1);
+    playbackBuffer = buffer;
+    lastResult = { wordTimestamps: collected.word_boundary.map(b => ({ ...b, startTimeMs: b.start_time_ms, endTimeMs: b.end_time_ms })) };
+
+    // Show result
+    showResult(`Document synthesis: ${collected.element_start.length} elements, ${(resp.total_duration_ms / 1000).toFixed(2)}s, ${chunks.length} chunks`);
+    document.getElementById('audioMetrics').innerHTML = `
+      <div class="metric"><div class="label">Duration</div><div class="value">${(buffer.duration).toFixed(2)}s</div></div>
+      <div class="metric"><div class="label">Elements</div><div class="value">${collected.element_start.length}</div></div>
+      <div class="metric"><div class="label">Words</div><div class="value">${collected.word_boundary.length}</div></div>
+      <div class="metric"><div class="label">Sample Rate</div><div class="value">${sr} Hz</div></div>
+    `;
+    document.getElementById('player').style.display = 'flex';
+    document.getElementById('playTime').textContent = `0:00 / ${fmtTime(buffer.duration)}`;
+    document.getElementById('playbackWords').innerHTML = collected.word_boundary.map(b => `<span class="word">${esc(b.word)} </span>`).join('');
+    showWordResults(collected.word_boundary);
+    document.getElementById('jsonView').textContent = JSON.stringify({ elements: collected.element_start.length, total_duration_ms: resp.total_duration_ms, chunks: chunks.length, boundaries: collected.word_boundary.length }, null, 2);
+
+    log(`Doc synth: ${collected.element_start.length} elements, ${(resp.total_duration_ms/1000).toFixed(2)}s`, 'ok');
+    cleanup();
+  } catch (err) { log('Doc synthesis failed: ' + err.message, 'err'); }
+}
+
+function showDocResult(resp) {
+  const stats = resp.stats || {};
+  document.getElementById('docMetrics').innerHTML = `
+    <div class="metric"><div class="label">Format</div><div class="value">${resp.format}</div></div>
+    <div class="metric"><div class="label">Elements</div><div class="value">${stats.total_elements || 0}</div></div>
+    <div class="metric"><div class="label">Words</div><div class="value">${stats.total_words || 0}</div></div>
+    <div class="metric"><div class="label">Chars</div><div class="value">${stats.total_chars || 0}</div></div>
+    <div class="metric"><div class="label">Time</div><div class="value">${stats.analysis_time_ms || 0}ms</div></div>
+  `;
+  const els = resp.elements || [];
+  const elTypeBadge = (t) => `<span class="el-badge el-${t}">${t}</span>`;
+  document.getElementById('docElements').innerHTML = els.map((el, i) => {
+    const preview = el.text.substring(0, 100).replace(/\n/g, ' ');
+    const voice = el.voice ? `rate=${el.voice.rate} pitch=${el.voice.pitch} vol=${el.voice.volume}` : '';
+    return `<div class="doc-el">
+      <span style="color:var(--fg3);font-size:11px;min-width:20px">${i}</span>
+      ${elTypeBadge(el.type)}
+      <span class="preview">${esc(preview)}</span>
+      <span class="voice-params">${voice}</span>
+    </div>`;
+  }).join('');
+  showResult(`Document: ${resp.format}, ${els.length} elements, ${stats.total_words || 0} words (${stats.analysis_time_ms || 0}ms)`);
+  document.getElementById('jsonView').textContent = JSON.stringify(resp, null, 2);
+}
+
+// ===== QUICK SYNTHESIS =====
+async function quickSynth(andPlay = false) {
+  const text = document.getElementById('synthText').value.trim();
+  if (!text) { log('No text', 'err'); return; }
+  const voice = document.getElementById('voiceSelect').value || undefined;
+  const rate = parseFloat(document.getElementById('rateInput').value) || 1.0;
+  const alignment = document.getElementById('alignSelect').value;
+  const analyzeQuality = document.getElementById('qualitySelect').value === 'on';
+  log(`Synthesizing: "${text.substring(0, 60)}${text.length > 60 ? '...' : ''}"`, 'info');
+  try {
+    await connectWS();
+    const id = crypto.randomUUID();
+    const msgTypes = ['audio_chunk', 'word_boundary'];
+    if (analyzeQuality) msgTypes.push('quality_score');
+    const { collected, cleanup } = collectMessages(id, msgTypes);
+    const req = { type: 'synthesize', id, text, rate, alignment };
+    if (voice) req.voice_id = voice;
+    if (analyzeQuality) { req.analyze_quality = true; req.quality_analyzers = ['asr', 'mos', 'prosody', 'signal']; }
+    const resp = await wsSend(req);
+    if (resp.type === 'error') { log('Error: ' + (resp.message || 'unknown'), 'err'); cleanup(); return; }
+    const chunks = collected.audio_chunk;
+    const sr = chunks[0]?.sample_rate || 22050;
+    const { samples, buffer } = buildAudioBuffer(chunks, sr, 1);
+    showSynthResult(collected, samples, buffer);
+    if (collected.quality_score?.length > 0) showQualityResult(collected.quality_score[0]);
+    log(`Done: ${buffer.duration.toFixed(2)}s, ${collected.word_boundary.length} words`, 'ok');
+    cleanup();
+    if (andPlay) { document.querySelector('[data-tab="audio"]').click(); togglePlayback(); }
+  } catch (err) { log('Failed: ' + err.message, 'err'); }
+}
+
+// ===== RESULT DISPLAY =====
+function showResult(text) {
+  document.getElementById('resultText').textContent = text;
+  document.getElementById('resultText').style.color = 'var(--fg)';
+}
+
+function showSynthResult(collected, samples, buffer) {
+  const chunks = collected.audio_chunk, bounds = collected.word_boundary;
+  const sr = chunks[0]?.sample_rate || 22050;
+  if (samples && buffer) {
+    lastResult = { wordTimestamps: bounds.map(b => ({ ...b, startTimeMs: b.start_time_ms, endTimeMs: b.end_time_ms })) };
+    playbackBuffer = buffer;
+    document.getElementById('resultMetrics').style.display = 'grid';
+    document.getElementById('resultMetrics').innerHTML = `
+      <div class="metric"><div class="label">Duration</div><div class="value">${buffer.duration.toFixed(2)}s</div></div>
+      <div class="metric"><div class="label">Sample Rate</div><div class="value">${sr} Hz</div></div>
+      <div class="metric"><div class="label">Samples</div><div class="value">${samples.length.toLocaleString()}</div></div>
+      <div class="metric"><div class="label">Chunks</div><div class="value">${chunks.length}</div></div>
+      <div class="metric"><div class="label">Words</div><div class="value">${bounds.length}</div></div>
+    `;
+    showResult(`Synthesis: ${buffer.duration.toFixed(2)}s, ${bounds.length} words, ${samples.length.toLocaleString()} samples`);
+    document.getElementById('audioMetrics').innerHTML = `
+      <div class="metric"><div class="label">Duration</div><div class="value">${buffer.duration.toFixed(2)}s</div></div>
+      <div class="metric"><div class="label">Channels</div><div class="value">${buffer.numberOfChannels}</div></div>
+      <div class="metric"><div class="label">Sample Rate</div><div class="value">${sr} Hz</div></div>
+    `;
+    document.getElementById('player').style.display = 'flex';
+    document.getElementById('playTime').textContent = `0:00 / ${fmtTime(buffer.duration)}`;
+    document.getElementById('playbackWords').innerHTML = bounds.map(b => `<span class="word">${esc(b.word)} </span>`).join('');
+  }
+  showWordResults(bounds);
+  document.getElementById('jsonView').textContent = JSON.stringify({ chunks: chunks.length, boundaries: bounds }, null, 2);
+}
+
+function showWordResults(bounds) {
+  if (!bounds.length) return;
+  document.getElementById('wordView').innerHTML = bounds.map(b => `<span class="word">${esc(b.word)} </span>`).join('');
+  document.getElementById('wordList').textContent = bounds.map((b, i) => {
+    const syl = b.syllables ? ` | syl: ${b.syllables.map(s => s.text).join('-')}` : '';
+    const conf = b.confidence != null ? ` | conf: ${(b.confidence * 100).toFixed(0)}%` : '';
+    return `[${i}] "${b.word}" ${b.start_time_ms.toFixed(0)}–${b.end_time_ms.toFixed(0)}ms${conf}${syl}`;
+  }).join('\n');
+}
+
+function showQualityResult(qs) {
+  document.getElementById('qualityMetrics').innerHTML = `
+    <div class="metric"><div class="label">Overall</div><div class="value ${qs.overall_score >= 7 ? 'good' : qs.overall_score >= 4 ? 'warn' : 'bad'}">${qs.overall_score.toFixed(1)}/10</div></div>
+    <div class="metric"><div class="label">Rating</div><div class="value">${qs.overall_rating}</div></div>
+    <div class="metric"><div class="label">MOS</div><div class="value ${qs.mos >= 3.5 ? 'good' : 'warn'}">${qs.mos.toFixed(2)}</div></div>
+    <div class="metric"><div class="label">ASR Conf</div><div class="value">${(qs.asr_confidence * 100).toFixed(1)}%</div></div>
+    <div class="metric"><div class="label">SNR</div><div class="value">${qs.snr_db.toFixed(1)} dB</div></div>
+    <div class="metric"><div class="label">F0 Mean</div><div class="value">${qs.f0_mean_hz.toFixed(0)} Hz</div></div>
+  `;
+  let d = `Overall: ${qs.overall_score.toFixed(1)}/10 (${qs.overall_rating})\n`;
+  d += `ASR: conf=${(qs.asr_confidence*100).toFixed(1)}%, WER=${(qs.asr_wer*100).toFixed(1)}%\n`;
+  d += `ASR hypothesis: "${qs.asr_hypothesis}"\nMOS: ${qs.mos.toFixed(2)} (${qs.mos_rating})\n`;
+  d += `SNR: ${qs.snr_db.toFixed(1)} dB\nClip: ${(qs.clip_ratio*100).toFixed(2)}%\nSilence: ${(qs.silence_ratio*100).toFixed(1)}%\n`;
+  if (qs.artifacts?.length) d += '\nArtifacts:\n' + qs.artifacts.map(a => `  [${a.severity}] ${a.type}: ${a.detail}`).join('\n');
+  if (qs.recommendations?.length) d += '\nRecommendations:\n' + qs.recommendations.map(r => `  - ${r}`).join('\n');
+  document.getElementById('qualityDetail').textContent = d;
+  showResult(`Quality: ${qs.overall_score.toFixed(1)}/10 (${qs.overall_rating}), MOS: ${qs.mos.toFixed(2)}`);
+}
+
+// ===== TEST DEFINITIONS =====
+const TESTS = [
+  // Connection
+  { id: 'ws-connect', cat: 'connection', name: 'WebSocket connect', fn: testWsConnect },
+  { id: 'ws-reconnect', cat: 'connection', name: 'WebSocket reconnect', fn: testWsReconnect },
+  { id: 'list-voices', cat: 'connection', name: 'List voices', fn: testListVoices },
+  { id: 'system-info', cat: 'connection', name: 'Get system info', fn: testSystemInfo },
+  { id: 'server-stats', cat: 'connection', name: 'Get server stats', fn: testServerStats },
+
+  // Synthesis
+  { id: 'synth-basic', cat: 'synthesis', name: 'Basic synthesis', fn: testSynthBasic },
+  { id: 'synth-rate-slow', cat: 'synthesis', name: 'Rate control: 0.5x', fn: () => testSynthRate(0.5) },
+  { id: 'synth-rate-fast', cat: 'synthesis', name: 'Rate control: 2.0x', fn: () => testSynthRate(2.0) },
+  { id: 'synth-rate-compare', cat: 'synthesis', name: 'Rate ratio check', fn: testSynthRateCompare },
+  { id: 'synth-align-word', cat: 'synthesis', name: 'Alignment: word', fn: testAlignWord },
+  { id: 'synth-align-syl', cat: 'synthesis', name: 'Alignment: word+syllable', fn: testAlignSyllable },
+  { id: 'synth-empty', cat: 'synthesis', name: 'Empty text → error', fn: testSynthEmpty },
+  { id: 'synth-long', cat: 'synthesis', name: 'Long text (200+ chars)', fn: testSynthLong },
+  { id: 'synth-unicode', cat: 'synthesis', name: 'Unicode text', fn: testSynthUnicode },
+  { id: 'synth-numbers', cat: 'synthesis', name: 'Numbers & symbols', fn: testSynthNumbers },
+  { id: 'synth-dialogue', cat: 'synthesis', name: 'Dialogue with quotes', fn: testSynthDialogue },
+
+  // Document
+  { id: 'doc-md', cat: 'document', name: 'Analyze markdown', fn: testDocMarkdown },
+  { id: 'doc-plain', cat: 'document', name: 'Analyze plain text', fn: testDocPlain },
+  { id: 'doc-html', cat: 'document', name: 'Analyze HTML', fn: testDocHtml },
+  { id: 'doc-elements', cat: 'document', name: 'Element types present', fn: testDocElements },
+  { id: 'doc-voice-scheme', cat: 'document', name: 'Voice scheme attached', fn: testDocVoiceScheme },
+  { id: 'doc-synth', cat: 'document', name: 'Document synthesis', fn: testDocSynth },
+
+  // Quality
+  { id: 'q-basic', cat: 'quality', name: 'Full quality analysis', fn: testQualityFull },
+  { id: 'q-asr', cat: 'quality', name: 'ASR-only analysis', fn: testQualityAsr },
+  { id: 'q-mos', cat: 'quality', name: 'MOS score range', fn: testQualityMos },
+
+  // OCR
+  { id: 'ocr-canvas', cat: 'ocr', name: 'OCR from canvas', fn: testOcrCanvas },
+  { id: 'ocr-testimg', cat: 'ocr', name: 'OCR test image', fn: testOcrTestImage },
+  { id: 'ocr-bbox', cat: 'ocr', name: 'Bounding box fields', fn: testOcrBboxFields },
+  { id: 'ocr-minconf', cat: 'ocr', name: 'Min confidence filter', fn: testOcrMinConf },
+];
+
+// ===== TEST HELPERS =====
+function assert(c, m) { if (!c) throw new Error(m || 'Assertion failed'); }
+function assertType(v, t, n) { assert(typeof v === t, `${n}: expected ${t}, got ${typeof v}`); }
+function assertGt(v, min, n) { assert(v > min, `${n}: expected > ${min}, got ${v}`); }
+
+async function synthText(text, opts = {}) {
+  await connectWS();
+  const id = crypto.randomUUID();
+  const types = ['audio_chunk', 'word_boundary'];
+  if (opts.analyze_quality) types.push('quality_score');
+  const { collected, cleanup } = collectMessages(id, types);
+  const req = { type: 'synthesize', id, text, rate: opts.rate || 1.0, alignment: opts.alignment || 'none', ...opts };
+  delete req.type; req.type = 'synthesize';
+  const resp = await wsSend(req);
+  cleanup();
+  assert(resp.type === 'synthesis_complete', `Synth failed: ${resp.message || resp.type}`);
+  return { resp, collected };
+}
+
+// ===== TEST IMPLEMENTATIONS =====
+async function testWsConnect() { await connectWS(); assert(ws && ws.readyState === WebSocket.OPEN); }
+async function testWsReconnect() { if (ws) { ws.close(); ws = null; } await new Promise(r => setTimeout(r, 200)); await connectWS(); assert(ws?.readyState === WebSocket.OPEN); }
+
+async function testListVoices() {
+  await connectWS();
+  const resp = await wsSend({ type: 'list_voices' });
+  assert(resp.type === 'voice_list');
+  voices = resp.voices || [];
+  assertGt(voices.length, 0, 'Voice count');
+  const sel = document.getElementById('voiceSelect');
+  sel.innerHTML = '<option value="">Default</option>' + voices.map(v => `<option value="${esc(v.id)}">${esc(v.name)} (${esc(v.engine)})</option>`).join('');
+  showResult(`${voices.length} voices: ${[...new Set(voices.map(v=>v.engine))].join(', ')}`);
+}
+
+async function testSystemInfo() {
+  await connectWS();
+  const r = await wsSend({ type: 'get_system_info' });
+  assert(r.type === 'system_info'); assertType(r.os, 'string', 'os'); assertType(r.cpu_cores, 'number', 'cores');
+  showResult(`${r.os} ${r.os_version} (${r.arch}), ${r.cpu_cores} cores, ${r.available_engines?.length || 0} engines`);
+}
+
+async function testServerStats() {
+  await connectWS();
+  const r = await wsSend({ type: 'get_server_stats' });
+  assert(r.type === 'server_stats');
+  showResult(`${(r.servers || []).length} servers tracked`);
+}
+
+async function testSynthBasic() {
+  const { collected } = await synthText('Hello world', { alignment: 'word' });
+  assertGt(collected.audio_chunk.length, 0, 'Chunks');
+  assertGt(collected.word_boundary.length, 0, 'Words');
+  const { samples, buffer } = buildAudioBuffer(collected.audio_chunk, collected.audio_chunk[0]?.sample_rate || 22050, 1);
+  showSynthResult(collected, samples, buffer);
+}
+
+async function testSynthRate(rate) {
+  const { collected } = await synthText('Testing rate control', { rate });
+  assertGt(collected.audio_chunk.length, 0, 'Chunks');
+  const bytes = collected.audio_chunk.reduce((s, c) => s + atob(c.data_base64).length, 0);
+  showResult(`Rate ${rate}x: ${bytes} bytes, ${collected.word_boundary.length} words`);
+}
+
+async function testSynthRateCompare() {
+  const slow = await synthText('Testing rate comparison', { rate: 0.5 });
+  const fast = await synthText('Testing rate comparison', { rate: 2.0 });
+  const s1 = slow.collected.audio_chunk.reduce((s, c) => s + atob(c.data_base64).length, 0);
+  const s2 = fast.collected.audio_chunk.reduce((s, c) => s + atob(c.data_base64).length, 0);
+  assertGt(s1, s2, 'Slow > fast');
+  showResult(`Rate ratio: 0.5x=${s1}B, 2.0x=${s2}B (${(s1/s2).toFixed(2)}x)`);
+}
+
+async function testAlignWord() {
+  const { collected } = await synthText('Three word test', { alignment: 'word' });
+  const b = collected.word_boundary;
+  assertGt(b.length, 0, 'Words');
+  b.forEach((w, i) => { assertType(w.start_time_ms, 'number', `[${i}].start`); assertType(w.end_time_ms, 'number', `[${i}].end`); });
+}
+
+async function testAlignSyllable() {
+  const { collected } = await synthText('Beautiful butterfly', { alignment: 'word+syllable' });
+  assertGt(collected.word_boundary.length, 0, 'Words');
+  const hasSyl = collected.word_boundary.some(b => b.syllables?.length > 0);
+  showResult(hasSyl ? `Syllables: ${collected.word_boundary.reduce((s,b) => s + (b.syllables?.length||0), 0)} total` : 'Word alignment (syllable server may be cold)');
+}
+
+async function testSynthEmpty() {
+  await connectWS();
+  const id = crypto.randomUUID();
+  try { const r = await wsSend({ type: 'synthesize', id, text: '', rate: 1.0 }); assert(r.type === 'error'); }
+  catch { /* timeout = acceptable */ }
+}
+
+async function testSynthLong() {
+  const text = 'The quick brown fox jumps over the lazy dog. '.repeat(5);
+  const { collected } = await synthText(text);
+  assertGt(collected.audio_chunk.length, 0, 'Chunks');
+  assertGt(collected.word_boundary.length, 10, 'Words');
+  showResult(`Long: ${text.length} chars → ${collected.word_boundary.length} words`);
+}
+
+async function testSynthUnicode() {
+  const { collected } = await synthText('Café résumé naïve über piñata');
+  assertGt(collected.audio_chunk.length, 0, 'Chunks');
+}
+
+async function testSynthNumbers() {
+  const { collected } = await synthText('$1,234.56 at 3:45 PM on 03/09/2026');
+  assertGt(collected.audio_chunk.length, 0, 'Chunks');
+}
+
+async function testSynthDialogue() {
+  const { collected } = await synthText('"Hello!" said Alice. "How are you?" asked Bob.');
+  assertGt(collected.audio_chunk.length, 0, 'Chunks');
+  assertGt(collected.word_boundary.length, 5, 'Words');
+}
+
+async function testDocMarkdown() {
+  if (!await checkHealth('doc')) throw new Error('SKIP');
+  await connectWS();
+  const r = await wsSend({ type: 'analyze_document', id: crypto.randomUUID(), text: '# Title\n\nParagraph.\n\n- Item 1\n- Item 2', format: 'markdown' });
+  assert(r.type === 'document_analysis'); assert(r.success); assertGt(r.elements?.length, 0, 'Elements');
+  assert(r.format === 'markdown');
+  showDocResult(r);
+}
+
+async function testDocPlain() {
+  if (!await checkHealth('doc')) throw new Error('SKIP');
+  await connectWS();
+  const r = await wsSend({ type: 'analyze_document', id: crypto.randomUUID(), text: 'First paragraph.\n\nSecond paragraph.\n\nThird paragraph.', format: 'plain' });
+  assert(r.type === 'document_analysis'); assert(r.success); assertGt(r.elements?.length, 0, 'Elements');
+}
+
+async function testDocHtml() {
+  if (!await checkHealth('doc')) throw new Error('SKIP');
+  await connectWS();
+  const r = await wsSend({ type: 'analyze_document', id: crypto.randomUUID(), text: '<h1>Title</h1><p>Paragraph.</p><ul><li>Item</li></ul>', format: 'html' });
+  assert(r.type === 'document_analysis'); assert(r.success);
+}
+
+async function testDocElements() {
+  if (!await checkHealth('doc')) throw new Error('SKIP');
+  await connectWS();
+  const text = '# Heading\n\nParagraph text.\n\n- List item\n\n> Blockquote';
+  const r = await wsSend({ type: 'analyze_document', id: crypto.randomUUID(), text, format: 'markdown' });
+  assert(r.success);
+  const types = new Set(r.elements.map(e => e.type));
+  assert(types.has('heading'), 'Missing heading'); assert(types.has('paragraph'), 'Missing paragraph');
+  showResult(`Element types: ${[...types].join(', ')}`);
+}
+
+async function testDocVoiceScheme() {
+  if (!await checkHealth('doc')) throw new Error('SKIP');
+  await connectWS();
+  const r = await wsSend({ type: 'analyze_document', id: crypto.randomUUID(), text: '# Title\n\nBody text.', format: 'markdown' });
+  assert(r.success);
+  const hasVoice = r.elements.some(e => e.voice && e.voice.rate != null);
+  assert(hasVoice, 'No voice scheme data on elements');
+  showResult('Voice schemes present on elements');
+}
+
+async function testDocSynth() {
+  if (!await checkHealth('doc')) throw new Error('SKIP');
+  await connectWS();
+  const id = crypto.randomUUID();
+  const { collected, cleanup } = collectMessages(id, ['audio_chunk', 'element_start', 'element_complete', 'document_progress']);
+  const r = await wsSend({ type: 'synthesize_document', id, text: '# Hello\n\nShort paragraph.', format: 'markdown', rate: 1.0 });
+  cleanup();
+  assert(r.type === 'document_synthesis_complete');
+  assertGt(collected.audio_chunk.length, 0, 'Chunks');
+  assertGt(collected.element_start.length, 0, 'Elements');
+  showResult(`Doc synth: ${collected.element_start.length} els, ${(r.total_duration_ms/1000).toFixed(2)}s`);
+}
+
+async function testQualityFull() {
+  if (!await checkHealth('quality')) throw new Error('SKIP');
+  const { collected } = await synthText('Quality analysis test sentence', { analyze_quality: true, quality_analyzers: ['asr','mos','prosody','signal'] });
+  const qs = collected.quality_score?.[0];
+  if (!qs) { showResult('No score (server warming up)'); return; }
+  assertType(qs.overall_score, 'number', 'overall_score'); assertType(qs.mos, 'number', 'mos');
+  showQualityResult(qs);
+}
+
+async function testQualityAsr() {
+  if (!await checkHealth('quality')) throw new Error('SKIP');
+  const { collected } = await synthText('The quick brown fox', { analyze_quality: true, quality_analyzers: ['asr'] });
+  const qs = collected.quality_score?.[0];
+  if (!qs) { showResult('No ASR score'); return; }
+  assertType(qs.asr_confidence, 'number', 'asr_confidence');
+  showResult(`ASR: ${(qs.asr_confidence*100).toFixed(1)}% conf, WER=${(qs.asr_wer*100).toFixed(1)}%, hyp="${qs.asr_hypothesis}"`);
+}
+
+async function testQualityMos() {
+  if (!await checkHealth('quality')) throw new Error('SKIP');
+  const { collected } = await synthText('A clear sentence for quality testing', { analyze_quality: true, quality_analyzers: ['mos'] });
+  const qs = collected.quality_score?.[0];
+  if (!qs) { showResult('No MOS score'); return; }
+  assert(qs.mos >= 1 && qs.mos <= 5, `MOS out of range: ${qs.mos}`);
+  showResult(`MOS: ${qs.mos.toFixed(2)} (${qs.mos_rating})`);
+}
+
+async function testOcrCanvas() {
+  if (!await checkHealth('ocr')) throw new Error('SKIP');
+  const canvas = document.createElement('canvas'); canvas.width = 400; canvas.height = 80;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 400, 80);
+  ctx.fillStyle = '#000'; ctx.font = 'bold 28px Arial'; ctx.fillText('Hello OCR Test', 20, 50);
+  const b64 = canvas.toDataURL('image/png').split(',')[1];
+  await connectWS();
+  const r = await wsSend({ type: 'extract_text', id: crypto.randomUUID(), image_base64: b64, image_format: 'png' });
+  assert(r.type === 'ocr_result'); assert(r.success);
+  assertGt(r.text.trim().length, 0, 'Text length');
+  showResult(`OCR: "${r.text.trim()}" (${(r.confidence*100).toFixed(1)}%)`);
+}
+
+async function testOcrTestImage() {
+  if (!await checkHealth('ocr')) throw new Error('SKIP');
+  try {
+    const resp = await fetch('test-images/01_clean_text.png');
+    if (!resp.ok) throw new Error('Image not found — run generate_test_images.py');
+    const blob = await resp.blob();
+    const b64 = await new Promise(res => { const r = new FileReader(); r.onload = () => res(r.result.split(',')[1]); r.readAsDataURL(blob); });
+    await connectWS();
+    const r = await wsSend({ type: 'extract_text', id: crypto.randomUUID(), image_base64: b64, image_format: 'png' });
+    assert(r.type === 'ocr_result'); assert(r.success);
+    assertGt(r.total_regions, 0, 'Regions');
+    showOcrResult(r);
+  } catch (e) { throw new Error(e.message.includes('not found') ? 'SKIP' : e.message); }
+}
+
+async function testOcrBboxFields() {
+  if (!await checkHealth('ocr')) throw new Error('SKIP');
+  const canvas = document.createElement('canvas'); canvas.width = 300; canvas.height = 60;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 300, 60);
+  ctx.fillStyle = '#000'; ctx.font = '24px Arial'; ctx.fillText('Bounding box', 10, 40);
+  const b64 = canvas.toDataURL('image/png').split(',')[1];
+  await connectWS();
+  const r = await wsSend({ type: 'extract_text', id: crypto.randomUUID(), image_base64: b64, image_format: 'png' });
+  assert(r.success);
+  if (r.bounding_boxes?.length > 0) {
+    const b = r.bounding_boxes[0];
+    assertType(b.text, 'string', 'text'); assertType(b.confidence, 'number', 'confidence');
+    assertType(b.left, 'number', 'left'); assertType(b.top, 'number', 'top');
+    assertType(b.width, 'number', 'width'); assertType(b.height, 'number', 'height');
+  }
+}
+
+async function testOcrMinConf() {
+  if (!await checkHealth('ocr')) throw new Error('SKIP');
+  const canvas = document.createElement('canvas'); canvas.width = 300; canvas.height = 60;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 300, 60);
+  ctx.fillStyle = '#000'; ctx.font = '24px Arial'; ctx.fillText('Confidence test', 10, 40);
+  const b64 = canvas.toDataURL('image/png').split(',')[1];
+  await connectWS();
+  const r = await wsSend({ type: 'extract_text', id: crypto.randomUUID(), image_base64: b64, image_format: 'png', min_confidence: 0.99 });
+  assert(r.type === 'ocr_result');
+  showResult(`Min conf 0.99: ${r.total_regions} regions passed filter`);
+}
+
+// ===== TEST RUNNER =====
+function renderTests() {
+  const groups = {};
+  TESTS.forEach(t => { (groups[t.cat] = groups[t.cat] || []).push(t); });
+  for (const [cat, tests] of Object.entries(groups)) {
+    const el = document.getElementById('tests-' + cat);
+    if (!el) continue;
+    el.innerHTML = tests.map(t => `
+      <div class="test-row" id="test-${t.id}">
+        <span class="test-name">${esc(t.name)}</span>
+        <span class="test-time" id="time-${t.id}"></span>
+        <span class="test-status" id="status-${t.id}">○</span>
+      </div>
+    `).join('');
+  }
+}
+
+function setTestStatus(id, status, timeMs) {
+  const el = document.getElementById('status-' + id);
+  const tEl = document.getElementById('time-' + id);
+  if (el) { el.className = 'test-status ' + status; el.textContent = status==='pass'?'✓':status==='fail'?'✗':status==='running'?'◉':'○'; }
+  if (tEl && timeMs !== undefined) tEl.textContent = timeMs + 'ms';
+}
+
+async function runTests(tests) {
+  document.getElementById('summary').style.display = 'flex';
+  let pass = 0, fail = 0, skip = 0, totalTime = 0;
+  tests.forEach(t => setTestStatus(t.id, '', undefined));
+  for (const t of tests) {
+    setTestStatus(t.id, 'running');
+    const start = performance.now();
+    try {
+      await t.fn();
+      const ms = Math.round(performance.now() - start); totalTime += ms;
+      setTestStatus(t.id, 'pass', ms); log(`✓ ${t.name} (${ms}ms)`, 'ok'); pass++;
+    } catch (err) {
+      const ms = Math.round(performance.now() - start); totalTime += ms;
+      if (err.message === 'SKIP') { setTestStatus(t.id, 'skip', ms); log(`⊘ ${t.name} — skipped`, 'warn'); skip++; }
+      else { setTestStatus(t.id, 'fail', ms); log(`✗ ${t.name} — ${err.message}`, 'err'); fail++; }
+    }
+  }
+  document.getElementById('sumTotal').textContent = tests.length;
+  document.getElementById('sumPass').textContent = pass;
+  document.getElementById('sumFail').textContent = fail;
+  document.getElementById('sumSkip').textContent = skip;
+  document.getElementById('sumTime').textContent = totalTime + 'ms';
+  log(`Suite: ${pass} passed, ${fail} failed, ${skip} skipped (${totalTime}ms)`, fail ? 'err' : 'ok');
+}
+
+async function runAllTests() {
+  document.getElementById('btnRunAll').disabled = true;
+  await runTests(TESTS);
+  document.getElementById('btnRunAll').disabled = false;
+}
+
+function runCat(cat) { runTests(TESTS.filter(t => t.cat === cat)); }
+
+// ===== RENDER FILE / IMAGE BUTTONS =====
+function renderFileButtons() {
+  document.getElementById('fileButtons').innerHTML = TEST_FILES.map((f, i) =>
+    `<button class="btn-sm" onclick="loadTestFile(${i})">${f.name}</button>`
+  ).join('');
+}
+
+function renderImageButtons() {
+  document.getElementById('ocrImageButtons').innerHTML = TEST_IMAGES.map((img, i) =>
+    `<button class="btn-sm" onclick="loadTestImage(${i})">${img.name}</button>`
+  ).join('');
+}
+
+// ===== DROP ZONE CLICKS =====
+document.getElementById('textDropZone').addEventListener('click', () => document.getElementById('textFileInput').click());
+document.getElementById('imgDropZone').addEventListener('click', () => document.getElementById('imgFileInput').click());
+
+// ===== INIT =====
+renderTests();
+renderFileButtons();
+renderImageButtons();
+checkAllHealth();
+</script>
+</body>
+</html>

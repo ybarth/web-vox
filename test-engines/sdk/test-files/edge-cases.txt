@@ -1,0 +1,44 @@
+Edge Case Test Samples
+
+=== Numbers and Dates ===
+The meeting is at 3:45 PM on March 9th, 2026.
+She earned $1,234,567.89 last year.
+The temperature was -40°F (which equals -40°C).
+Call us at (555) 867-5309 or 1-800-555-0199.
+Pi is approximately 3.14159265358979.
+
+=== Abbreviations and Acronyms ===
+Dr. Smith works at NASA's JPL facility.
+The CEO of IBM met with the VP of R&D at MIT.
+Please RSVP by EOD Friday.
+The API uses REST over HTTPS with OAuth 2.0.
+
+=== Special Characters ===
+Café, résumé, naïve, über, façade, piñata.
+"Hello," she said — and then she paused... "goodbye."
+It costs £50 (≈€58 or ¥8,700).
+The formula is: E = mc² where c ≈ 3×10⁸ m/s.
+
+=== Mixed Languages ===
+Bonjour! Comment allez-vous aujourd'hui?
+Guten Tag! Wie geht es Ihnen?
+¡Hola! ¿Cómo estás?
+こんにちは (konnichiwa) means "hello" in Japanese.
+
+=== Extremely Short ===
+Hi.
+OK.
+Yes!
+
+=== Extremely Long Sentence ===
+The extraordinarily comprehensive and meticulously detailed investigation conducted by the internationally renowned team of multidisciplinary researchers, including experts in computational linguistics, signal processing, psychoacoustics, and artificial intelligence, yielded unprecedented insights into the complex interplay between prosodic features, semantic content, and listener perception in the context of synthesized speech quality assessment, ultimately leading to the development of a novel evaluation framework that significantly outperformed existing state-of-the-art methods across multiple benchmark datasets spanning diverse languages, speaking styles, and acoustic conditions.
+
+=== Repeated Words ===
+Buffalo buffalo Buffalo buffalo buffalo buffalo Buffalo buffalo.
+The the the the the.
+That that is is that that is not is not is that it it is.
+
+=== Punctuation Heavy ===
+Wait... what?! No — really?! You can't be serious!!! I mean... come on!!!
+"'Hello,' he said, 'is anyone there?'" she quoted.
+(See [Appendix A], §3.2, pp. 45–67; cf. Smith et al., 2024.)

@@ -1,0 +1,36 @@
+{
+  "name": "@web-vox/server",
+  "version": "0.1.0",
+  "description": "Server manager for web-vox-pro — start, stop, and health-check the native TTS backend",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@web-vox/core": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.7.0"
+  },
+  "license": "MIT",
+  "keywords": ["tts", "text-to-speech", "server", "process-manager"],
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

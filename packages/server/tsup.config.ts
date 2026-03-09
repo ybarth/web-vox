@@ -1,18 +1,13 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: [
-    'src/index.ts',
-    'src/effects/index.ts',
-    'src/transport/index.ts',
-    'src/engines/index.ts',
-    'src/utils/index.ts',
-  ],
+  entry: ['src/index.ts'],
   format: ['esm', 'cjs'],
   dts: true,
   splitting: false,
   sourcemap: true,
   clean: true,
-  target: 'es2022',
+  target: 'node18',
   outDir: 'dist',
+  platform: 'node',
 });

@@ -1,0 +1,3 @@
+Hello world! This is a short plain text sample for basic synthesis testing.
+
+The quick brown fox jumps over the lazy dog.
